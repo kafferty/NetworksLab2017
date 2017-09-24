@@ -18,7 +18,7 @@ int readn(int sockfd, char *buf, int n){
             exit(1);
         }
     }
-    return 0;
+    return off;
 }
 
 int main(int argc, char *argv[]) {
@@ -78,7 +78,7 @@ int main(int argc, char *argv[]) {
     //      perror("ERROR reading from socket");
     //      exit(1);
     //  }
-    readn(newsockfd, p, 255);
+    n = readn(newsockfd, p, 255);
 
     printf("Here is the message: %s\n", buffer);
 
