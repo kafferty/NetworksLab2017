@@ -18,7 +18,7 @@ int readn(int sockfd, char *buf, int n){
             exit(1);
         }
     }
-    return 0;
+    return off;
 }
 
 int main(int argc, char *argv[]) {
@@ -81,7 +81,7 @@ int main(int argc, char *argv[]) {
 
     /* Now read server response */
     bzero(buffer, 256);
-    readn(sockfd, p, 255);
+    n = readn(sockfd, p, 255);
 
     printf("%s\n", buffer);
 
