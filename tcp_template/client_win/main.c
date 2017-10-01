@@ -19,6 +19,17 @@ int readn(int sockfd, char *buf, int n){
 }
 
 int main(int argc, char *argv[]) {
+
+    WSADATA wsaData;
+
+    unsigned int t;
+    t = WSAStartup(MAKEWORD(2,2), &wsaData);
+
+    if (t != 0) {
+        printf("WSAStartup failed: %ui\n", t);
+        return 1;
+    }
+
     int sockfd, n;
     uint16_t portno;
     struct sockaddr_in serv_addr;
@@ -51,7 +62,7 @@ int main(int argc, char *argv[]) {
 
     memset((char *) &serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
-    bcopy(server->h_addr, (char *) &serv_addr.sin_addr.s_addr, (size_t) server->h_length);
+    memcpy((char *) &serv_addr.sin_addr.s_addr, server->h_addr, (size_t) server->h_length);
     serv_addr.sin_port = htons(portno);
 
     /* Now connect to the server */
@@ -82,8 +93,15 @@ int main(int argc, char *argv[]) {
 
     printf("%s\n", buffer);
 
-    shutdown(sockfd, 2);
+    t = shutdown(sockfd, SD_BOTH);
+    if (n == SOCKET_ERROR) {
+        printf("shutdown failed: %d\n", WSAGetLastError());
+        closesocket(sockfd);
+        WSACleanup();
+        return 1;
+    }
     closesocket(sockfd);
+    WSACleanup();
 
     return 0;
 }
