@@ -19,6 +19,17 @@ int readn(int sockfd, char *buf, int n){
 }
 
 int main(int argc, char *argv[]) {
+
+    WSADATA wsaData;
+
+    unsigned int t;
+    t = WSAStartup(MAKEWORD(2,2), &wsaData);
+
+    if (t != 0) {
+        printf("WSAStartup failed: %ui\n", t);
+        return 1;
+    }
+
     int sockfd, newsockfd;
     uint16_t portno;
     unsigned int clilen;
@@ -87,8 +98,15 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    shutdown(newsockfd, 2);
-    closesocket(newsockfd);
 
+    t = shutdown(newsockfd, SD_BOTH);
+    if (n == SOCKET_ERROR) {
+        printf("shutdown failed: %d\n", WSAGetLastError());
+        closesocket(sockfd);
+        WSACleanup();
+        return 1;
+    }
+    closesocket(newsockfd);
+    WSACleanup();
     return 0;
 }
