@@ -75,7 +75,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
             printf("Bytes read: %d\n", readed);
             printf("Received data: %s\n", recvbuf);
             if (recvbuf == endString) { //8) Обработка запроса на отключение клиента
-                std::cout<<"aaaaaaaaa\n";
                 shutdown(ClientSocket, 2);
                 closesocket(ClientSocket);
                 int deleteSock;
@@ -105,9 +104,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                     }
 
                     std::ofstream registerFile;
-                    for(int i = 0; i < loginVector.size(); i ++) {
-                        std::cout<<loginVector[i] + "\n";
-                    }
                     registerFile.open("registered.txt", std::ios::app);
                     while(true) {
                         readed = readn(ClientSocket, p, recvbuflen);
@@ -195,7 +191,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                     char numberOfQuest[DEFAULT_BUFLEN];
                                     itoa(vec.size(), numberOfQuest, 10);
                                     std::string resultingString = "Your result is " + std::string(conv) + " out of " + std::string(numberOfQuest);
-                                    std::cout << resultingString + "\n";
                                     send(ClientSocket, resultingString.c_str(), DEFAULT_BUFLEN, 0); // 7) После прохождения теста - выдача клиенту его результата
                                 }
                             }
@@ -226,7 +221,7 @@ unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток для прин
             SOCKET *nClientSocket = new SOCKET;
             *nClientSocket = ClientSocket;
             poolOfSockets.push_back(std::make_pair(connectionsCounter, ClientSocket));
-            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &threadedFunction, (void*) nClientSocket, 0, &threadId)); // 3) Поддержка однjdhtvtyyjq hf,jns ytcrjkmrb[ rkbtynjd
+            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &threadedFunction, (void*) nClientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
             printf("new client connected with id: %d\n", connectionsCounter);
             connectionsCounter ++;
             ReleaseMutex(mainThreadMutex);
@@ -342,7 +337,6 @@ int main(void)
                         fflush(stdin);
                         char sendbuf[DEFAULT_BUFLEN];
                         printf("Your message: ");
-                        //scanf("%s", sendbuf);
                         fgets(sendbuf, DEFAULT_BUFLEN, stdin);
                         printf("%s\n", sendbuf);
                         WaitForSingleObject(mainThreadMutex, INFINITE);
