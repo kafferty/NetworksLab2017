@@ -1,0 +1,6 @@
+lidia 2412 no_result
+qwerty qwerty 2_out_of_3
+qwe qwe no_result
+asdf asdf 0_out_of_3
+jk jk 2_out_of_3
+end no_result
