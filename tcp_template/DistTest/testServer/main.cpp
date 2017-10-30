@@ -427,19 +427,23 @@ int main(void)
             } else {
                 if (str == closeClientString) {//9) Принудительное отключение клиента
                     printf("---------------\nWrite an id of a client to disconnect\n---------------\n");
-                    scanf("%d", &num);
-
+                    //scanf("%d", &num);
+                    std::string strNum;
+                    std::getline(std::cin, strNum);
+                    num = atoi(strNum.c_str());
                     WaitForSingleObject(mainThreadMutex, INFINITE);
-                    int indexToDelete;
+                    int indexToDelete = -1;
                     for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
                         if (poolOfSockets[i].first == num) {
                             indexToDelete = i;
                             break;
                         }
                     }
-                    shutdown(poolOfSockets[indexToDelete].second, 2);
-                    closesocket(poolOfSockets[indexToDelete].second);
-                    poolOfSockets.erase(poolOfSockets.begin() + indexToDelete);
+                    if (indexToDelete != -1) {
+                        shutdown(poolOfSockets[indexToDelete].second, 2);
+                        closesocket(poolOfSockets[indexToDelete].second);
+                        poolOfSockets.erase(poolOfSockets.begin() + indexToDelete);
+                    }
                     ReleaseMutex(mainThreadMutex);
                 } else {
                     if (str == sendToClientString) {
