@@ -121,59 +121,65 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                     while(true) {
                         readed = readn(ClientSocket, p, recvbuflen);
                         std::string infoString(recvbuf);
-                        bool flag = false;//для выхода из цикла
-                        for(unsigned int i = 0; i < loginVector.size(); i++) {
-                            if (loginVector[i] == infoString) {
-                                bool isOnline = false;//залогинин ли
-                                for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                    if (loggedInClients[i].second == infoString) {
-                                        isOnline = true;
-                                        break;
-                                    }
-                                }
-                                if (!isOnline) {
-                                    char successfulLogin[DEFAULT_BUFLEN] = "You are successfully logged in!";
-                                    loggedInClients.push_back(std::make_pair(ClientSocket, infoString));
-                                    sendn(ClientSocket, successfulLogin, strlen(successfulLogin));
-                                    flag = true;
-                                } else {
-                                    char alreadyOnline[DEFAULT_BUFLEN] = "This account is online!";
-                                    sendn(ClientSocket, alreadyOnline, strlen(alreadyOnline));
-                                }
-                                break;
-                            }
-                        }
-                        if (flag == true)
-                            break;
-                        else {
-                            bool noLogin = false;
+                        if(split(infoString, " ").size() == 2) {
+                            bool flag = false;//для выхода из цикла
                             for(unsigned int i = 0; i < loginVector.size(); i++) {
-                                if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
-                                    char badLogin[DEFAULT_BUFLEN] = "Try another password or login!";
-                                    sendn(ClientSocket, badLogin, strlen(badLogin));
-                                    noLogin = true;//есть логин
+                                if (loginVector[i] == infoString) {
+                                    bool isOnline = false;//залогинин ли
+                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+                                        if (loggedInClients[i].second == infoString) {
+                                            isOnline = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!isOnline) {
+                                        char successfulLogin[DEFAULT_BUFLEN] = "You are successfully logged in!";
+                                        loggedInClients.push_back(std::make_pair(ClientSocket, infoString));
+                                        sendn(ClientSocket, successfulLogin, strlen(successfulLogin));
+                                        flag = true;
+                                    } else {
+                                        char alreadyOnline[DEFAULT_BUFLEN] = "This account is online!";
+                                        sendn(ClientSocket, alreadyOnline, strlen(alreadyOnline));
+                                    }
                                     break;
                                 }
                             }
-                            if (noLogin == false) {//если нет такого логина
-                                bool reLogin = false;
-                                for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
-                                    if (loggedInClients[i].first == ClientSocket) {
-                                        loggedInClients[i].second = infoString;
-                                        reLogin = true;
+                            if (flag == true)
+                                break;
+                            else {
+                                bool noLogin = false;
+                                for(unsigned int i = 0; i < loginVector.size(); i++) {
+                                    if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
+                                        char badLogin[DEFAULT_BUFLEN] = "Try another password or login!";
+                                        sendn(ClientSocket, badLogin, strlen(badLogin));
+                                        noLogin = true;//есть логин
                                         break;
                                     }
                                 }
-                                if (!reLogin) {
-                                    loggedInClients.push_back(std::make_pair(ClientSocket, infoString));
+                                if (noLogin == false) {//если нет такого логина
+                                    bool reLogin = false;
+                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
+                                        if (loggedInClients[i].first == ClientSocket) {
+                                            loggedInClients[i].second = infoString;
+                                            reLogin = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!reLogin) {
+                                        loggedInClients.push_back(std::make_pair(ClientSocket, infoString));
+                                    }
+                                    infoString = infoString + " no_result\n";
+                                    registerFile << infoString;
+                                    registerFile.close();
+                                    char successfulRegistration[DEFAULT_BUFLEN] = "You are successfully registered";
+                                    sendn(ClientSocket, successfulRegistration, strlen(successfulRegistration));
+                                    break;
                                 }
-                                infoString = infoString + " no_result\n";
-                                registerFile << infoString;
-                                registerFile.close();
-                                char successfulRegistration[DEFAULT_BUFLEN] = "You are successfully registered";
-                                sendn(ClientSocket, successfulRegistration, strlen(successfulRegistration));
-                                break;
                             }
+                        } else {
+                            printf("Wrong number of argumenst\n");
+                            char wrongNumber[DEFAULT_BUFLEN] = "Wrong number of argumenst";
+                            sendn(ClientSocket, wrongNumber, strlen(wrongNumber));
                         }
                     }
                 } else {
