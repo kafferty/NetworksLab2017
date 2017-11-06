@@ -120,6 +120,9 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                     registerFile.open("registered.txt", std::ios::app);
                     while(true) {
                         readed = readn(ClientSocket, p, recvbuflen);
+                        if (readed < 0) {
+                            break;
+                        }
                         std::string infoString(recvbuf);
                         if(split(infoString, " ").size() == 2) {
                             bool flag = false;//для выхода из цикла
@@ -177,7 +180,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                 }
                             }
                         } else {
-                            printf("Wrong number of argumenst\n");
                             char wrongNumber[DEFAULT_BUFLEN] = "Wrong number of argumenst";
                             sendn(ClientSocket, wrongNumber, strlen(wrongNumber));
                         }
