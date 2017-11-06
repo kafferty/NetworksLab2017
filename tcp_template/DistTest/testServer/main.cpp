@@ -397,6 +397,14 @@ int main(void)
                 WSACleanup();
                 return 1;
         }
+
+        int yes=1;
+
+        if (setsockopt(ListenSocket, SOL_SOCKET, SO_REUSEADDR, (char*) &yes, sizeof(yes)) == -1) {
+        perror("setsockopt");
+        exit(1);
+        }
+
         iResult = bind( ListenSocket, result->ai_addr, (int)result->ai_addrlen);
         if (iResult == SOCKET_ERROR) {
             printf("bind failed with error: %d\n", WSAGetLastError());
