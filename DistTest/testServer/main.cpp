@@ -19,20 +19,22 @@
 
 #define REGISTRATION_FILE "registered.txt"
 #define NO_INFO "noInfo"
-#define END_STRING "end"
-#define CLOSE_CLIENT_STRING "close"
 #define SEND_TO_CLIENT_STRING "send"
 #define SHOW_CLIENTS_STRING "show"
 #define REGISTER_STRING "register"
-#define SHOW_TESTS_STRING "show"
-#define GET_TEST_RESULT "getResult"
-#define GET_TEST "getTest"
+
 #define CHOOSE_OPERATION "---------------\nChoose an operation:\n 1) end\n 2) close\n 3) send\n 4) show\n---------------\n"
 #define CLIENT_DISCONNECT "---------------\nWrite an id of a client to disconnect\n---------------\n"
 #define CLIENT_SEND_MESSAGE "---------------\nWrite an id of a client to send a message\n---------------\n"
 #define AVAILABLE_CLIENTS "Available clients: "
 #define YOUR_MESSAGE "Your message: "
 #define CLOSING_SERVER "Closing server \n"
+
+const std::string END_STRING = "end";
+const std::string CLOSE_CLIENT_STRING = "close";
+const std::string GET_TEST_RESULT = "getResult";
+const std::string GET_TEST = "getTest";
+const std::string SHOW_TESTS_STRING = "show";
 
 std::vector< std::pair<int, SOCKET> > poolOfSockets; //Вектор пар для клиентов
 HANDLE mainThreadMutex;
@@ -87,8 +89,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
         do {
             char recvbuf[DEFAULT_BUFLEN];
             int recvbuflen = DEFAULT_BUFLEN;
-            int iSendResult;
-            int iResult;
 
             readed = readn(clientSocket, recvbuf, recvbuflen);
             if (readed == -1 || readed == 0) {
@@ -103,7 +103,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                 closesocket(clientSocket);
                 int deleteSock;
                 WaitForSingleObject(mainThreadMutex, INFINITE);
-                SOCKET sockToDelete;
 
                 for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
                     if (poolOfSockets[i].second == clientSocket) {
@@ -233,7 +232,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
 
                         } else { //5) Получение от клиента номера теста
                             std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
-                            if ((splitVect.size() > 1) && (splitVect[0] == getTest)) {
+                            if ((splitVect.size() > 1) && (splitVect[0] == GET_TEST)) {
                                 std::string currentClientInfo = NO_INFO;
                                 for(unsigned int i = 0; i < loggedInClients.size(); i++) {
                                     if (loggedInClients[i].first == clientSocket) {
@@ -338,7 +337,6 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
 }
 
 unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток для принятия клиентов
-        SOCKET clientSocket = INVALID_SOCKET;
         SOCKET listenSocket = *(SOCKET*) pArguments;
         HANDLE myThreadHandlers[255];
         unsigned threadId;
@@ -475,7 +473,6 @@ int main(void)
                         std::string numStr;
                         std::getline(std::cin, numStr);
                         num = atoi(numStr.c_str());
-                        char sendbuf[DEFAULT_BUFLEN];
                         printf(YOUR_MESSAGE);
                         std::string sendString;
                         std::getline(std::cin, sendString);
