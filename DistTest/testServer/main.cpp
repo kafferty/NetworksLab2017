@@ -17,15 +17,15 @@
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27021"
 
-std::vector< std::pair<int, SOCKET> > poolOfSockets; //Вектор пар для клиентов
+std::vector< std::pair<int, SOCKET> > poolOfSockets; //Р’РµРєС‚РѕСЂ РїР°СЂ РґР»СЏ РєР»РёРµРЅС‚РѕРІ
 HANDLE mainThreadMutex;
 std::vector< std::pair<SOCKET, std::string> > loggedInClients;
 
-std::vector<std::string> split(std::string s, std::string delimiter){ //Разбивает строку по делиметру
+std::vector<std::string> split(std::string s, std::string delimiter){ //Р Р°Р·Р±РёРІР°РµС‚ СЃС‚СЂРѕРєСѓ РїРѕ РґРµР»РёРјРµС‚СЂСѓ
     std::vector<std::string> list;
     size_t pos = 0;
     std::string token;
-    while ((pos = s.find(delimiter)) != std::string::npos) { //пока не конец строки
+    while ((pos = s.find(delimiter)) != std::string::npos) { //РїРѕРєР° РЅРµ РєРѕРЅРµС† СЃС‚СЂРѕРєРё
         token = s.substr(0, pos);
         list.push_back(token);
         s.erase(0, pos + delimiter.length());
@@ -34,7 +34,7 @@ std::vector<std::string> split(std::string s, std::string delimiter){ //Разбивае
     return list;
 }
 
-int sendn(int sendSocket, char *buffer, int n) { // Функция, посылающая >= n байт
+int sendn(int sendSocket, char *buffer, int n) { // Р¤СѓРЅРєС†РёСЏ, РїРѕСЃС‹Р»Р°СЋС‰Р°СЏ >= n Р±Р°Р№С‚
     int bytesSent = 0;
     while(bytesSent < n) {
         int sendResult = send(sendSocket, buffer, DEFAULT_BUFLEN, 0);
@@ -87,7 +87,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
             }
             printf("Bytes read: %d\n", readed);
             printf("Received data: %s\n", recvbuf);
-            if (recvbuf == endString) { //8) Обработка запроса на отключение клиента
+            if (recvbuf == endString) { //8) РћР±СЂР°Р±РѕС‚РєР° Р·Р°РїСЂРѕСЃР° РЅР° РѕС‚РєР»СЋС‡РµРЅРёРµ РєР»РёРµРЅС‚Р°
                 shutdown(ClientSocket, 2);
                 closesocket(ClientSocket);
                 int deleteSock;
@@ -102,7 +102,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                 ReleaseMutex(mainThreadMutex);
                 break;
             } else {
-                if (std::string(recvbuf) == registerString) { //4) Регистрация клиента
+                if (std::string(recvbuf) == registerString) { //4) Р РµРіРёСЃС‚СЂР°С†РёСЏ РєР»РёРµРЅС‚Р°
                     std::vector<std::string> loginVector;
                     std::ifstream fromRegisterFile;
                     fromRegisterFile.open("registered.txt");
@@ -125,10 +125,10 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                         }
                         std::string infoString(recvbuf);
                         if(split(infoString, " ").size() == 2) {
-                            bool flag = false;//для выхода из цикла
+                            bool flag = false;//РґР»СЏ РІС‹С…РѕРґР° РёР· С†РёРєР»Р°
                             for(unsigned int i = 0; i < loginVector.size(); i++) {
                                 if (loginVector[i] == infoString) {
-                                    bool isOnline = false;//залогинин ли
+                                    bool isOnline = false;//Р·Р°Р»РѕРіРёРЅРёРЅ Р»Рё
                                     for(unsigned int i = 0; i < loggedInClients.size(); i++) {
                                         if (loggedInClients[i].second == infoString) {
                                             isOnline = true;
@@ -155,13 +155,13 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                     if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
                                         char badLogin[DEFAULT_BUFLEN] = "Try another password or login!";
                                         sendn(ClientSocket, badLogin, strlen(badLogin));
-                                        noLogin = true;//есть логин
+                                        noLogin = true;//РµСЃС‚СЊ Р»РѕРіРёРЅ
                                         break;
                                     }
                                 }
-                                if (noLogin == false) {//если нет такого логина
+                                if (noLogin == false) {//РµСЃР»Рё РЅРµС‚ С‚Р°РєРѕРіРѕ Р»РѕРіРёРЅР°
                                     bool reLogin = false;
-                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
+                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//РµСЃР»Рё РєР»РёРµРЅС‚ РїС‹С‚Р°РµС‚СЃСЏ Р·Р°Р№С‚Рё Р·Р° РґСЂСѓРіРѕРіРѕ СЋР·РµСЂР°
                                         if (loggedInClients[i].first == ClientSocket) {
                                             loggedInClients[i].second = infoString;
                                             reLogin = true;
@@ -185,11 +185,11 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                         }
                     }
                 } else {
-                    if (recvbuf == showTestsString) { //4) Выдача клиенту списка тестов
+                    if (recvbuf == showTestsString) { //4) Р’С‹РґР°С‡Р° РєР»РёРµРЅС‚Сѓ СЃРїРёСЃРєР° С‚РµСЃС‚РѕРІ
                         char sendbuf[DEFAULT_BUFLEN] = "1 - Math test\n2 - Phsycological test\n";
                         sendn(ClientSocket, sendbuf, strlen(sendbuf));
                     } else {
-                        if (recvbuf == getTestResult) { //4) Выдача клиенту результата его последнего теста
+                        if (recvbuf == getTestResult) { //4) Р’С‹РґР°С‡Р° РєР»РёРµРЅС‚Сѓ СЂРµР·СѓР»СЊС‚Р°С‚Р° РµРіРѕ РїРѕСЃР»РµРґРЅРµРіРѕ С‚РµСЃС‚Р°
                             std::string currentClientInfo = "noInfo";
                             for(unsigned int i = 0; i < loggedInClients.size(); i++) {
                                 if (loggedInClients[i].first == ClientSocket) {
@@ -197,7 +197,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                     break;
                                 }
                             }
-                            if (currentClientInfo != "noInfo") {//сюда не зайти, если не залогинен
+                            if (currentClientInfo != "noInfo") {//СЃСЋРґР° РЅРµ Р·Р°Р№С‚Рё, РµСЃР»Рё РЅРµ Р·Р°Р»РѕРіРёРЅРµРЅ
                                 std::ifstream fromRegisterFile;
                                 fromRegisterFile.open("registered.txt");
                                 std::string currentString;
@@ -218,7 +218,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                 sendn(ClientSocket, registerFirst, strlen(registerFirst));
                             }
 
-                        } else { //5) Получение от клиента номера теста
+                        } else { //5) РџРѕР»СѓС‡РµРЅРёРµ РѕС‚ РєР»РёРµРЅС‚Р° РЅРѕРјРµСЂР° С‚РµСЃС‚Р°
                             std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
                             if ((splitVect.size() > 1) && (splitVect[0] == getTest)) {
                                 std::string currentClientInfo = "noInfo";
@@ -242,16 +242,16 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                             for (unsigned int i = 0; i <= question.size(); i++) {
                                                 buf[i] = question[i];
                                             }
-                                                //6) Посылаем вопрос
+                                                //6) РџРѕСЃС‹Р»Р°РµРј РІРѕРїСЂРѕСЃ
                                             sendn(ClientSocket, buf, strlen(buf));
                                             if (std::getline(file, question)) {
                                                 for (unsigned int i = 0; i <= question.size(); i++) {
                                                     buf[i] = question[i];
                                                 }
-                                                //6) Посылаем варианты ответов
+                                                //6) РџРѕСЃС‹Р»Р°РµРј РІР°СЂРёР°РЅС‚С‹ РѕС‚РІРµС‚РѕРІ
                                                 sendn(ClientSocket, buf, strlen(buf));
                                             }
-                                            readn(ClientSocket, p, DEFAULT_BUFLEN); //6) Получение ответов на вопросы
+                                            readn(ClientSocket, p, DEFAULT_BUFLEN); //6) РџРѕР»СѓС‡РµРЅРёРµ РѕС‚РІРµС‚РѕРІ РЅР° РІРѕРїСЂРѕСЃС‹
                                             vec.push_back(std::string(recvbuf));
                                         }
                                         file.close();
@@ -260,7 +260,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                         std::string answer;
                                         if (ansFile.is_open()) {
                                             int counter = 0;
-                                            while(getline(ansFile, answer)) { //Проверяем ответы клиента
+                                            while(getline(ansFile, answer)) { //РџСЂРѕРІРµСЂСЏРµРј РѕС‚РІРµС‚С‹ РєР»РёРµРЅС‚Р°
                                                 if (vec[counter] == answer) {
                                                     summary++;
                                                 }
@@ -284,7 +284,7 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
                                                 break;
                                             }
                                         }
-                                        std::vector<std::string> copyVector; //Запись последнего результата в файл
+                                        std::vector<std::string> copyVector; //Р—Р°РїРёСЃСЊ РїРѕСЃР»РµРґРЅРµРіРѕ СЂРµР·СѓР»СЊС‚Р°С‚Р° РІ С„Р°Р№Р»
                                         if (currentClientInfo != "noInfo") {
                                             std::ifstream fromRegisterFile;
                                             fromRegisterFile.open("registered.txt");
@@ -324,14 +324,14 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
 
 }
 
-unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток для принятия клиентов
+unsigned int __stdcall acceptThreadFunction(void* pArguments) { //РџРѕС‚РѕРє РґР»СЏ РїСЂРёРЅСЏС‚РёСЏ РєР»РёРµРЅС‚РѕРІ
         SOCKET ClientSocket = INVALID_SOCKET;
         SOCKET ListenSocket = *(SOCKET*) pArguments;
         HANDLE myThreadHandlers[255];
         unsigned threadId;
         int connectionsCounter = 0;
         while(true){
-            int ClientSocket = accept(ListenSocket, NULL, NULL); //2) Обработка запросов на подключение по этому порту от клиентов
+            int ClientSocket = accept(ListenSocket, NULL, NULL); //2) РћР±СЂР°Р±РѕС‚РєР° Р·Р°РїСЂРѕСЃРѕРІ РЅР° РїРѕРґРєР»СЋС‡РµРЅРёРµ РїРѕ СЌС‚РѕРјСѓ РїРѕСЂС‚Сѓ РѕС‚ РєР»РёРµРЅС‚РѕРІ
             if (ClientSocket == INVALID_SOCKET) {
                  printf("accept failed with error: %d\n", WSAGetLastError());
                  closesocket(ListenSocket);
@@ -339,7 +339,7 @@ unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток для прин
             }
             WaitForSingleObject(mainThreadMutex, INFINITE);
             poolOfSockets.push_back(std::make_pair(connectionsCounter, ClientSocket));
-            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &threadedFunction, (void*) &ClientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
+            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &threadedFunction, (void*) &ClientSocket, 0, &threadId)); // 3) РџРѕРґРґРµСЂР¶РєР° РѕРґРЅРѕРІСЂРµРјРµРЅРЅРѕР№ СЂР°Р±РѕС‚С‹ РЅРµСЃРєРѕР»СЊРєРёС… РєР»РёРµРЅС‚РѕРІ С‡РµСЂРµР· РјРµС…Р°РЅРёР·Рј РЅРёС‚РµР№
             printf("new client connected with id: %d\n", connectionsCounter);
             connectionsCounter ++;
             ReleaseMutex(mainThreadMutex);
@@ -390,7 +390,7 @@ int main(void)
             return 1;
         }
 
-        ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol); //1) Прослушивание определенного порта
+        ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol); //1) РџСЂРѕСЃР»СѓС€РёРІР°РЅРёРµ РѕРїСЂРµРґРµР»РµРЅРЅРѕРіРѕ РїРѕСЂС‚Р°
         if (ListenSocket == INVALID_SOCKET) {
                 printf("socket failed with error: %d\n", WSAGetLastError());
                 freeaddrinfo(result);
@@ -441,7 +441,7 @@ int main(void)
                 CloseHandle(acceptThreadHandler);
                 break;
             } else {
-                if (str == closeClientString) {//9) Принудительное отключение клиента
+                if (str == closeClientString) {//9) РџСЂРёРЅСѓРґРёС‚РµР»СЊРЅРѕРµ РѕС‚РєР»СЋС‡РµРЅРёРµ РєР»РёРµРЅС‚Р°
                     printf("---------------\nWrite an id of a client to disconnect\n---------------\n");
                     //scanf("%d", &num);
                     std::string strNum;
