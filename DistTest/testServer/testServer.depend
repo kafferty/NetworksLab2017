@@ -1,0 +1,13 @@
+# depslib dependency file v1.0
+1509386097 source:c:\users\lidia\desktop\testserver\testserver\main.cpp
+	<iostream>
+	<windows.h>
+	<winsock2.h>
+	<ws2tcpip.h>
+	<stdlib.h>
+	<stdio.h>
+	<process.h>
+	<vector>
+	<fstream>
+	<algorithm>
+
