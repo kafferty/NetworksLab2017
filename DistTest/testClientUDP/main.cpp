@@ -15,6 +15,7 @@
 
 bool toFile = false;
 std::ofstream file;
+pthread_mutex_t recv_send_mutex;
 
 
 std::vector<std::string> split(std::string s, std::string delimiter){ //Разбивает строку по делиметру
@@ -44,20 +45,65 @@ int readn(SOCKET newsockfd, char *buffer, int n) {
         }
         return n - nLeft;
 }
+
+ssize_t recvOneTime(SOCKET ConnectSocket, std::string &final, size_t recvbuflen, sockaddr_in server) {
+    char buf[DEFAULT_BUFLEN];
+    std::cout << "hey" << std::endl;
+    socklen_t len = sizeof(server);
+    pthread_mutex_lock(&recv_send_mutex);
+    ssize_t size = recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    char packet[3] = "0 ";
+
+    std::string bufstring = std::string(buf);
+    std::cout << bufstring << std::endl;
+    std::vector<std::string> recvVec = split(bufstring, " ");
+    strncat(packet, recvVec[0].c_str(), 512);
+    sendto(ConnectSocket, packet, recvbuflen, 0, (sockaddr *)(&server), len);
+    pthread_mutex_unlock(&recv_send_mutex);
+    final = "";
+    for(int i = 1; i < recvVec.size(); i++) final.append(recvVec[i]);
+    return size;
+}
+
+int sendOneTime(SOCKET ConnectSocket, char * connectstr, int recvbuflen, sockaddr_in server) {
+    std::string packet = "0";
+    char connectString[3] = "0 ";
+    int len = sizeof(server);
+    char buf[DEFAULT_BUFLEN];
+    strncat(connectString, connectstr, 512);
+    pthread_mutex_lock(&recv_send_mutex);
+    sendto(ConnectSocket, connectString, recvbuflen, 0, (sockaddr *)(&server), len);
+    recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    pthread_mutex_unlock(&recv_send_mutex);
+    std::cout<<buf<<std::endl;
+    std::vector<std::string> vec = split(std::string(buf), " ");
+    for (int i = 0; i < vec.size(); i++) {
+        std::cout <<"vec["<<i<<"] = {" << vec[i] <<"}\n";
+    }
+    if (vec[1] == "0") {
+        std::cout << "returning true\n";
+        return 0;
+    }
+    else return 1;
+}
+
 void * readFunc(void* pArguments) {
         SOCKET ConnectSocket = *(SOCKET*) pArguments;
+        std::cout  << ConnectSocket <<":" << &ConnectSocket <<std::endl;
         int iResult;
         struct sockaddr_in from{};
         socklen_t fromlen = sizeof(from);
         do {
-            char recvbf[2 * DEFAULT_BUFLEN];
-            int recvbuflen = 2 * DEFAULT_BUFLEN;
-            iResult = recvfrom(ConnectSocket, recvbf, recvbuflen, 0, (sockaddr *) (&from), &fromlen);
+            //std::string recvbf;
+            char recvbf[DEFAULT_BUFLEN];
+            //iResult = recvOneTime(ConnectSocket, recvbf, DEFAULT_BUFLEN, from);
+            //iResult = 1;
+            iResult = recvfrom(ConnectSocket, recvbf, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), &fromlen);
+            std::cout << recvbf <<std::endl;
+            char bufy[DEFAULT_BUFLEN] = "0 0";
+            sendto(ConnectSocket, bufy, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), fromlen);
+
             std::vector<std::string> vec = split(std::string(recvbf), " ");
-       		sendto(ConnectSocket, const_cast<char *>(("0 " + vec[0]).c_str()), DEFAULT_BUFLEN, 0, (sockaddr *) (&from), fromlen);
-        	std::string recvbuf;
-        	for (int i = 1; i < vec.size(); i++)
-            	recvbuf.append(vec[i]);
             if ( iResult > 0 ) {
                 if (toFile) {
                     file << "Bytes received: ";
@@ -67,7 +113,7 @@ void * readFunc(void* pArguments) {
                 } else {
                     printf("Bytes received: %d\n", iResult);
                 }
-                std::cout << recvbuf << std::endl;
+                std::cout << recvbf << std::endl;
             }
             else if ( iResult == 0 ) {
                 printf("Connection closed\n");
@@ -83,8 +129,10 @@ void * readFunc(void* pArguments) {
         closesocket(ConnectSocket);
         return 0;
 }
-int main(int argc, char *argv[])
-{
+
+
+
+int main(int argc, char *argv[]) {
     WSAData wsaData {};
     SOCKET newConnectSocket, ConnectSocket = INVALID_SOCKET;
     struct addrinfo *result = nullptr,
@@ -111,7 +159,7 @@ int main(int argc, char *argv[])
         WSACleanup();
         return 1;
     }
-
+    pthread_mutex_init(&recv_send_mutex, nullptr);
 
     ConnectSocket = socket(result->ai_family, result->ai_socktype,
         result->ai_protocol);
@@ -143,49 +191,69 @@ int main(int argc, char *argv[])
     }
     std::string endString = "end";
 
-    std::string connectstr = "0 hello";
-    sendto(ConnectSocket, connectstr.c_str(), 2 * recvbuflen, 0, (sockaddr *)(&server), len);
-    char buf[2*DEFAULT_BUFLEN];
-    recvfrom(ConnectSocket, buf, 2 * recvbuflen, 0, (sockaddr *)(&server), &len);
-    std::cout<< std::string(buf) << std::endl;
-    //std::vector<std::string> vec = split(std::string(buf), " ");
-    recvfrom(ConnectSocket, buf, 2 * recvbuflen, 0, (sockaddr *)(&server), &len);
-    std::vector<std::string> vec = split(std::string(buf), " ");
-    std::string sendback = vec[0] + " 0";
-    sendto(ConnectSocket, sendback.c_str(), 2 * recvbuflen, 0, (sockaddr *)(&server), len);
+    std::string connectstr = "hello";
+    //
+    std::string buf;
+    char testBuf[DEFAULT_BUFLEN] = "0 hello";
+    sendto(ConnectSocket, testBuf, recvbuflen, 0, (sockaddr *)(&server), len);
+    recvfrom(ConnectSocket, testBuf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    std::cout<<testBuf<<std::endl;
+    //std::cout << sendOneTime(ConnectSocket, testBuf, recvbuflen, server) << std::endl;
+    struct sockaddr_in server1{};
+    int len1 = sizeof(server1);
+    recvfrom(ConnectSocket, testBuf, recvbuflen, 0, (sockaddr *)(&server1), &len1);
+    std::cout << testBuf <<std::endl;
+    char bufy[DEFAULT_BUFLEN] = "0 0";
+    sendto(ConnectSocket, bufy, recvbuflen, 0, (sockaddr *)(&server1), len1);
+    //if (recvOneTime(ConnectSocket, buf, DEFAULT_BUFLEN, server) <= 0) return 1;
+    std::string recvString = std::string(testBuf);
+    server.sin_port = htons(atoi(testBuf));
 
-    server.sin_port = htons(atoi(vec[1].c_str()));
+    struct addrinfo *resultnew = nullptr;
 
-    iResult = getaddrinfo(nullptr, const_cast<char *>(vec[1].c_str()), &hints, &result);
+    iResult = getaddrinfo("127.0.0.1", testBuf, &hints, &resultnew);
     if ( iResult != 0 ) {
         printf("getaddrinfo failed with error: %d\n", iResult);
         WSACleanup();
         return 1;
     }
 
-    shutdown(ConnectSocket, 2);
-    closesocket(ConnectSocket);
-    newConnectSocket = socket(result->ai_family, result->ai_socktype,
-        result->ai_protocol);
+    //shutdown(ConnectSocket, 2);
+    //closesocket(ConnectSocket);
+    newConnectSocket = socket(resultnew->ai_family, resultnew->ai_socktype,
+                              resultnew->ai_protocol);
 
     if (newConnectSocket == -1) {
         printf("socket failed with error\n");
         WSACleanup();
         return 1;
     }
-    freeaddrinfo(result);
+    freeaddrinfo(resultnew);
+
+    struct sockaddr_in newserver{};
+    newserver.sin_family      = AF_INET;            /* Internet Domain    */
+    newserver.sin_port        = htons(atoi(testBuf));               /* Server Port        */
+    newserver.sin_addr.s_addr = inet_addr("127.0.0.1");
+    int newlen = sizeof(newserver);
+    std::cout  << newConnectSocket <<":" << &newConnectSocket <<std::endl;
 
     pthread_t acceptThread;
-    pthread_create(&acceptThread, nullptr, &readFunc, (void*) &newConnectSocket);
+    pthread_create(&acceptThread, nullptr, &readFunc, (void*) (&newConnectSocket));
     printf("Valid commands (Enter the command, not number):\n1) show\n2) getTest <number of test>\n3) getResult \n result of the last test\n4) register\n <press Enter> ---> <login> <password>\n");
     while(true) {
 
         std::string str;
         getline(std::cin, str);
+        //"пидзык"
 
-        int Result = sendto(newConnectSocket, str.c_str(), 2 * recvbuflen, 0, (sockaddr *)(&server), len);
-        if (Result == -1)
-            break;
+        //int Result = sendOneTime(newConnectSocket, const_cast<char *>(str.c_str()), recvbuflen, newserver);
+
+        sendto(newConnectSocket, str.c_str(), recvbuflen, 0, (sockaddr *)(&newserver), newlen);
+        //char newbuf[DEFAULT_BUFLEN];
+        //recvfrom(ConnectSocket, newbuf, recvbuflen, 0, (sockaddr *)(&newserver), &newlen);
+        //std::cout << newbuf << std::endl;
+        //if (Result == 1)
+        //break;
         if (str == endString) {
             break;
         }

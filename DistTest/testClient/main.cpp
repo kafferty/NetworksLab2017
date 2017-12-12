@@ -4,7 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <pthread.h>
-#include <sys/socket.h>
+#include <sys/socket.h> 
 #include <netdb.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -12,6 +12,8 @@
 
 #define DEFAULT_BUFLEN 512
 #define DEFAULT_PORT "27021"
+#define VALIDCOMMANDS1 "Valid commands (Enter the command, not number):\n1) show\n2) getTest <number of test>\n"
+#define VALIDCOMMANDS2 "3) getResult \n result of the last test\n4) register\n <press Enter> ---> <login> <password>\n5) end\n"
 
 bool toFile = false;
 std::ofstream file;
@@ -31,12 +33,12 @@ int readn(int newsockfd, char *buffer, int n) {
         return n - nLeft;
 }
 void * readFunc(void* pArguments) {
-        int ConnectSocket = *(int*) pArguments;
+        int connectSocket = *(int*) pArguments;
         int iResult;
         do {
             char recvbuf[DEFAULT_BUFLEN];
             int recvbuflen = DEFAULT_BUFLEN;
-            iResult = readn(ConnectSocket, recvbuf, recvbuflen);
+            iResult = readn(connectSocket, recvbuf, recvbuflen);
             if ( iResult > 0 ) {
                 if (toFile) {
                     file << "Bytes received: ";
@@ -58,13 +60,36 @@ void * readFunc(void* pArguments) {
             }
 
         } while( iResult > 0 );
-        shutdown(ConnectSocket, 2);
-        close(ConnectSocket);
+        shutdown(connectSocket, 2);
+        close(connectSocket);
         return 0;
 }
+
+int findConnection(addrinfo * ptr, addrinfo * result, int connectSocket) {
+    for(ptr=result; ptr != NULL ;ptr=ptr->ai_next) { // пытаемся подключиться к сокету сервера
+
+        connectSocket = socket(ptr->ai_family, ptr->ai_socktype,
+            ptr->ai_protocol);
+
+        if (connectSocket == -1) {
+            printf("socket failed with error\n");
+            return 1;
+        }
+
+        int iResult = connect( connectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+        if (iResult == -1) {
+            close(connectSocket);
+            connectSocket = -1;
+            continue;
+        }
+        break;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
-    int ConnectSocket = -1;
+    int connectSocket = -1;
     struct addrinfo *result = NULL,
                     *ptr = NULL,
                     hints;
@@ -78,35 +103,18 @@ int main(int argc, char *argv[])
     hints.ai_protocol = IPPROTO_TCP;
 
 
-
+    
     iResult = getaddrinfo(argv[1], argv[2], &hints, &result);
     if ( iResult != 0 ) {
         printf("getaddrinfo failed with error: %d\n", iResult);
         return 1;
     }
 
-   for(ptr=result; ptr != NULL ;ptr=ptr->ai_next) { // пытаемся подключиться к сокету сервера
-
-        ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype,
-            ptr->ai_protocol);
-
-        if (ConnectSocket == -1) {
-            printf("socket failed with error\n");
-            return 1;
-        }
-
-        iResult = connect( ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
-        if (iResult == -1) {
-            close(ConnectSocket);
-            ConnectSocket = -1;
-            continue;
-        }
-       break;
-    }
+    if (findConnection(ptr, result, connectSocket) == 1) return 1;
 
     freeaddrinfo(result);
 
-    if (ConnectSocket == -1) {
+    if (connectSocket == -1) {
         printf("Unable to connect to server!\n");
         return 1;
     }
@@ -122,24 +130,24 @@ int main(int argc, char *argv[])
     }
     std::string endString = "end";
     pthread_t acceptThread;
-    pthread_create(&acceptThread, NULL, &readFunc, (void*) &ConnectSocket);
-    printf("Valid commands (Enter the command, not number):\n1) show\n2) getTest <number of test>\n3) getResult \n result of the last test\n4) register\n <press Enter> ---> <login> <password>\n");
+    pthread_create(&acceptThread, NULL, &readFunc, (void*) &connectSocket);
+
+    printf("%s%s",VALIDCOMMANDS1, VALIDCOMMANDS2);
     while(true) {
 
         std::string str;
         getline(std::cin, str);
 
-        int Result = send( ConnectSocket, str.c_str(), recvbuflen, 0 );
+        int Result = send( connectSocket, str.c_str(), recvbuflen, 0 );
         if (Result == -1)
             break;
         if (str == endString) {
             break;
         }
     }
-    shutdown(ConnectSocket, 2);
-    close(ConnectSocket);
+    shutdown(connectSocket, 2);
+    close(connectSocket);
     pthread_join(acceptThread, NULL);
     file.close();
     return 0;
 }
-

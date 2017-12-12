@@ -67,19 +67,18 @@ int sendn(int sendSocket, char *buffer, int n, sockaddr_in *from, socklen_t from
    int bytesSent = 0;
    while(bytesSent < n) {
        std::string num = std::to_string(bytesSent / DEFAULT_BUFLEN) + " ";
-       for(int i = 0; i < DEFAULT_BUFLEN; i++) {
+       long sizeOfNum = num.size();
+       for(int i = 0; i < DEFAULT_BUFLEN - sizeOfNum; i++) {
            num.append(buffer);
            buffer = buffer + 1;
        }
-       ssize_t sendResult = sendto(sendSocket, num.c_str(), 2 * DEFAULT_BUFLEN , 0, (sockaddr *)from, fromlen);
+       ssize_t sendResult = sendto(sendSocket, num.c_str(), DEFAULT_BUFLEN, 0, (sockaddr *)from, fromlen);
        char packetNum[DEFAULT_BUFLEN];
-       ssize_t recvResult = recvfrom(sendSocket, packetNum, 2 * DEFAULT_BUFLEN, 0, (sockaddr *)from, &fromlen);
+       recvfrom(sendSocket, packetNum, DEFAULT_BUFLEN, 0, (sockaddr *)from, &fromlen);
        if (atoi(packetNum) != bytesSent / DEFAULT_BUFLEN) return -2;
-       //int sendResult = send(sendSocket, buffer, DEFAULT_BUFLEN, 0);
        if (sendResult == -1) {
            return -1;
        }
-       //buffer = buffer + DEFAULT_BUFLEN;
        bytesSent = bytesSent + DEFAULT_BUFLEN;
    }
    return bytesSent;
@@ -101,6 +100,37 @@ int readn(int newsockfd, char *buffer, int n) {
     return n - nLeft;
 }
 
+int sendOneTime(int ConnectSocket, char * connectstr, size_t recvbuflen, sockaddr_in server) {
+    std::string packet = "0";
+    char connectString[3] = "0 ";
+    socklen_t len = sizeof(server);
+    //connectstr = packet + " " + connectstr;
+    char buf[DEFAULT_BUFLEN];
+    strncat(connectString, connectstr, 512);
+    sendto(ConnectSocket, connectString, recvbuflen, 0, (sockaddr *)(&server), len);
+    std::cout << "here" << std::endl;
+    recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    std::cout << buf << std::endl;
+    return (split(std::string(buf), " ")[1] == packet) ? 0 : 1;
+}
+
+ssize_t recvOneTime(int ConnectSocket, std::string &final, size_t recvbuflen, sockaddr_in server) {
+    char buf[DEFAULT_BUFLEN];
+    std::cout << "hey" << std::endl;
+    socklen_t len = sizeof(server);
+    ssize_t size = recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    char packet[3] = "0 ";
+
+    std::string bufstring = std::string(buf);
+    std::cout << bufstring << std::endl;
+    std::vector<std::string> recvVec = split(bufstring, " ");
+    strncat(packet, recvVec[0].c_str(), 512);
+    sendto(ConnectSocket, packet, recvbuflen, 0, (sockaddr *)(&server), len);
+    final = "";
+    for(int i = 1; i < recvVec.size(); i++) final.append(recvVec[i]);
+    return size;
+}
+
 void * threadedFunction(void* pArguments) {
 
     int clientSocket = *(int*) pArguments;
@@ -109,22 +139,17 @@ void * threadedFunction(void* pArguments) {
 
     ssize_t readed;
     do {
-        char recvbf[DEFAULT_BUFLEN];
+        //char recvbf[DEFAULT_BUFLEN];
         int recvbuflen = DEFAULT_BUFLEN;
 
-        readed = recvfrom(clientSocket, recvbf, 2 * static_cast<size_t>(recvbuflen), 0, (sockaddr *)(&from), &fromlen);
-        if (readed == -1 || readed == 0) {
+        std::string recvbf;
+        if ((readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from)) <= 0) {
             shutdown(clientSocket, 2);
             close(clientSocket);
             break;
         }
-        std::vector<std::string> vec = split(std::string(recvbf), " ");
-        sendn(clientSocket, const_cast<char *>(("0 " + vec[0]).c_str()), DEFAULT_BUFLEN, &from, fromlen);
-        std::string recvbuf;
-        for (int i = 1; i < vec.size(); i++)
-            recvbuf.append(vec[i]);
-
-        printf("Bytes read: %d\n", (int) readed);
+        std::string recvbuf = std::string(recvbf);
+        std::cout << "Bytes read: " << readed << std::endl;
         std::cout << recvbuf << std::endl;
         if (recvbuf == END_STRING) { //8) Обработка запроса на отключение клиента
             shutdown(clientSocket, 2);
@@ -159,17 +184,12 @@ void * threadedFunction(void* pArguments) {
                 std::ofstream registerFile;
                 registerFile.open(REGISTRATION_FILE, std::ios::app);
                 while(true) {
-                    readed = recvfrom(clientSocket, recvbf, 2 * static_cast<size_t>(recvbuflen), 0, (sockaddr *)(&from), &fromlen);
+                    readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from);
                     if (readed < 0) {
                         break;
                     }
-                    std::vector<std::string> temp = split(std::string(recvbf), " ");
-                    sendn(clientSocket, const_cast<char *>(("0 " + temp[0]).c_str()), DEFAULT_BUFLEN, &from, fromlen);
-                    recvbuf = "";
-                    for (int i = 1; i < temp.size(); i++)
-                        recvbuf.append(temp[i]);
 
-                    std::string infoString(recvbuf);
+                    std::string infoString(recvbf);
                     if(split(infoString, " ").size() == 2) {
                         bool flag = false;//для выхода из цикла
                         for(unsigned int i = 0; i < loginVector.size(); i++) {
@@ -241,11 +261,14 @@ void * threadedFunction(void* pArguments) {
                         std::string test;
 
                         while (std::getline(file, test)) {
-                            listTests = listTests + test + "\n";
+                            listTests.append(test + "\n");
                         }
                         file.close();
-                        sendn(clientSocket, const_cast< char* >(listTests.c_str()),
-                              static_cast<int>(listTests.length()), &from, fromlen);
+                        //sendOneTime(clientSocket, const_cast<char *>(listTests.c_str()),
+                         //     listTests.length(), from);
+                        sendto(clientSocket, listTests.c_str(), DEFAULT_BUFLEN, 0,( sockaddr *)(&from), fromlen);
+                        char checkbuf[DEFAULT_BUFLEN];
+                        recvfrom(clientSocket, checkbuf, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), &fromlen);
                     }
                 } else {
                     if (recvbuf == GET_TEST_RESULT) { //4) Выдача клиенту результата его последнего теста
@@ -319,8 +342,8 @@ void * threadedFunction(void* pArguments) {
                                             }
                                             buf[ansToSend.length()] = '\0';
                                             sendn(clientSocket, buf, static_cast<int>(strlen(buf)), &from, fromlen);
-                                            recvfrom(clientSocket, recvbf, 2 * DEFAULT_BUFLEN, 0,
-                                                     (sockaddr *) (&from), &fromlen); //6) Получение ответов на вопросы
+                                            //recvfrom(clientSocket, recvbf, 2 * DEFAULT_BUFLEN, 0,
+                                                     //(sockaddr *) (&from), &fromlen); //6) Получение ответов на вопросы
                                             std::vector<std::string> temp = split(std::string(recvbf), " ");
                                             sendn(clientSocket, const_cast<char *>(("0 " + temp[0]).c_str()), DEFAULT_BUFLEN, &from, fromlen);
                                             recvbuf = "";
@@ -400,6 +423,8 @@ void * threadedFunction(void* pArguments) {
 
 }
 
+
+
 void * acceptThreadFunction(void* pArguments) { //Поток для принятия клиентов
     int listenSocket = *(int*) pArguments;
     std::vector< pthread_t > myThreadHandlers;
@@ -407,15 +432,19 @@ void * acceptThreadFunction(void* pArguments) { //Поток для принят
     int portnum = 2000;
 
     while(true){
-        char recvbuf[2 * DEFAULT_BUFLEN];
+        char buf[DEFAULT_BUFLEN];
+        std::string recvbuf;
         struct sockaddr_in from{};
         socklen_t fromlen = sizeof(from);
-        ssize_t recvBytes = recvfrom(listenSocket, recvbuf, 2 * DEFAULT_BUFLEN, 0, (sockaddr *)(&from), &fromlen);
-        std::cout<<std::string(recvbuf)<<std::endl;
-        std::vector<std::string> temp = split(std::string(recvbuf), " ");
-        sendn(listenSocket, const_cast<char *>(("0 " + temp[0]).c_str()), DEFAULT_BUFLEN, &from, fromlen);
 
-        if (recvBytes <= 0) break;
+        ssize_t res = recvfrom(listenSocket, buf, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), &fromlen);
+        if (res <= 0) break;
+        std::cout << buf << std::endl;
+        char bufy[DEFAULT_BUFLEN] = "0 0";
+        sendto(listenSocket, bufy, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), fromlen);
+
+        //ssize_t recvBytes = recvOneTime(listenSocket, recvbuf, DEFAULT_BUFLEN, from);
+        //if (recvBytes <= 0) break;
         struct addrinfo *result = nullptr;
         struct addrinfo hints{};
 
@@ -442,7 +471,15 @@ void * acceptThreadFunction(void* pArguments) { //Поток для принят
             shutdown(eachConnectionSocket, 2);
             close(eachConnectionSocket);
         }
-        ssize_t sendBytes = sendn(listenSocket, const_cast<char *>(std::to_string(portnum).c_str()), DEFAULT_BUFLEN, &from, fromlen);
+        std::string portString = std::to_string(portnum);
+        char buffer[DEFAULT_BUFLEN] = "";
+        snprintf(buffer, DEFAULT_BUFLEN, "%d", portnum);
+        std::cout << buffer << std::endl;
+        //if(sendOneTime(listenSocket, buffer, DEFAULT_BUFLEN, from) == 1) break;
+
+        sendto(listenSocket, buffer, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), fromlen);
+        recvfrom(listenSocket, buffer, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), &fromlen);
+        std::cout << buffer << std::endl;
         pthread_mutex_lock(&mainThreadMutex);
         poolOfSockets.emplace_back(std::make_pair(connectionsCounter, eachConnectionSocket));
         pthread_t workingThread;
