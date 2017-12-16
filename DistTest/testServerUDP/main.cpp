@@ -12,6 +12,7 @@
 #include <fstream>
 #include <algorithm>
 #include <cstring>
+#include <unordered_map>
 
 
 #define DEFAULT_BUFLEN 512
@@ -22,9 +23,7 @@
 #define SHOW_CLIENTS_STRING "show"
 #define REGISTER_STRING "register"
 
-#define CHOOSE_OPERATION "---------------\nChoose an operation:\n 1) end\n 2) close\n 3) show\n---------------\n"
-#define CLIENT_DISCONNECT "---------------\nWrite an id of a client to disconnect\n---------------\n"
-#define AVAILABLE_CLIENTS "Available clients: "
+#define CHOOSE_OPERATION "---------------\nChoose an operation:\n 1) end\n---------------\n"
 #define CLOSING_SERVER "Closing server \n"
 #define SUCCESSFUL_LOGIN "You are successfully logged in!"
 #define ALREADY_ONLINE "This account is online!"
@@ -34,8 +33,7 @@
 #define YOUR_RESULT "Your last result was: "
 #define REGISTER_FIRST "You have to register first"
 #define YOUR_NEW_RESULT "Your result is "
-#define CLOSING_CONNECT "closing all connections. Ending all threads\n"
-#define DELETE_SOCKET "deleting socket from pool of sockets \n"
+
 
 const std::string END_STRING = "end";
 const std::string CLOSE_CLIENT_STRING = "close";
@@ -46,9 +44,12 @@ const std::string ANSWER = "ANSWERS:";
 const std::string QUESTION = "QUESTION:";
 const std::string Q_END = "END:";
 
+int registerClient(int clientSocket, int counterRecv, int counterSend, ssize_t readed, std::string recvbf, sockaddr_in from);
+
 std::vector< std::pair<int, int> > poolOfSockets; //Вектор пар для клиентов
 pthread_mutex_t mainThreadMutex;
 std::vector< std::pair<int, std::string> > loggedInClients;
+std::unordered_map<std::string, std::string> loggedClients;
 
 std::vector<std::string> split(std::string s, std::string delimiter){ //Разбивает строку по делиметру
     std::vector<std::string> list;
@@ -62,88 +63,314 @@ std::vector<std::string> split(std::string s, std::string delimiter){ //Разб
     list.push_back(s);
     return list;
 }
-
-int sendn(int sendSocket, char *buffer, int n, sockaddr_in *from, socklen_t fromlen) { // Функция, посылающая >= n байт
-   int bytesSent = 0;
-   while(bytesSent < n) {
-       std::string num = std::to_string(bytesSent / DEFAULT_BUFLEN) + " ";
-       long sizeOfNum = num.size();
-       for(int i = 0; i < DEFAULT_BUFLEN - sizeOfNum; i++) {
-           num.append(buffer);
-           buffer = buffer + 1;
-       }
-       ssize_t sendResult = sendto(sendSocket, num.c_str(), DEFAULT_BUFLEN, 0, (sockaddr *)from, fromlen);
-       char packetNum[DEFAULT_BUFLEN];
-       recvfrom(sendSocket, packetNum, DEFAULT_BUFLEN, 0, (sockaddr *)from, &fromlen);
-       if (atoi(packetNum) != bytesSent / DEFAULT_BUFLEN) return -2;
-       if (sendResult == -1) {
-           return -1;
-       }
-       bytesSent = bytesSent + DEFAULT_BUFLEN;
-   }
-   return bytesSent;
+ssize_t sendOneTime(int connectSocket, char * connectstr, sockaddr_in &server, std::string packetNumber) {
+    socklen_t len = sizeof(server);
+    char connectString[DEFAULT_BUFLEN] = "";
+    strncat(connectString, (packetNumber + " ").c_str(), (packetNumber + " ").size());
+    strncat(connectString, connectstr, 512 - (packetNumber + " ").size());
+    std::cout << connectString << std::endl;
+    ssize_t iSend = sendto(connectSocket, connectString, DEFAULT_BUFLEN, 0, (sockaddr *)(&server), len);
+    return iSend;
 }
 
-
-int readn(int newsockfd, char *buffer, int n) {
-    int nLeft = n;
-    int k;
-    while (nLeft > 0) {
-        k = recv(newsockfd, buffer, nLeft, 0);
-        if (k < 0) {
-            perror("ERROR reading from socket");
-            return -1;
-        } else if (k == 0) break;
-        buffer = buffer + k;
-        nLeft = nLeft - k;
+int sendn(int sendSocket, char *buffer, size_t n, sockaddr_in &from, int &counter) { // Функция, посылающая >= n байт
+    int bytesSent = 0;
+    int finalCounter = 0;
+    while(bytesSent < n) {
+        std::string num = std::to_string( (bytesSent / (DEFAULT_BUFLEN - 2)) + counter ) + " ";
+        sendOneTime(sendSocket, buffer, from, num);
+        finalCounter = (bytesSent /(DEFAULT_BUFLEN - 2)) + counter;
+        buffer += DEFAULT_BUFLEN - 2;
+        bytesSent += DEFAULT_BUFLEN - 2;
     }
-    return n - nLeft;
+    counter = ++finalCounter;
+    return bytesSent;
 }
 
-int sendOneTime(int ConnectSocket, char * connectstr, size_t recvbuflen, sockaddr_in server) {
-    std::string packet = "0";
-    char connectString[3] = "0 ";
-    socklen_t len = sizeof(server);
-    //connectstr = packet + " " + connectstr;
+ssize_t recvOneTime(int connectSocket, std::string &final, size_t recvbuflen, sockaddr_in &server, std::string packetNumber) {
     char buf[DEFAULT_BUFLEN];
-    strncat(connectString, connectstr, 512);
-    sendto(ConnectSocket, connectString, recvbuflen, 0, (sockaddr *)(&server), len);
-    std::cout << "here" << std::endl;
-    recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
-    std::cout << buf << std::endl;
-    return (split(std::string(buf), " ")[1] == packet) ? 0 : 1;
-}
-
-ssize_t recvOneTime(int ConnectSocket, std::string &final, size_t recvbuflen, sockaddr_in server) {
-    char buf[DEFAULT_BUFLEN];
-    std::cout << "hey" << std::endl;
     socklen_t len = sizeof(server);
-    ssize_t size = recvfrom(ConnectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
-    char packet[3] = "0 ";
-
-    std::string bufstring = std::string(buf);
-    std::cout << bufstring << std::endl;
-    std::vector<std::string> recvVec = split(bufstring, " ");
-    strncat(packet, recvVec[0].c_str(), 512);
-    sendto(ConnectSocket, packet, recvbuflen, 0, (sockaddr *)(&server), len);
-    final = "";
-    for(int i = 1; i < recvVec.size(); i++) final.append(recvVec[i]);
+    ssize_t size = recvfrom(connectSocket, buf, recvbuflen, 0, (sockaddr *)(&server), &len);
+    std::vector<std::string> recvVec = split(std::string(buf), " ");
+    if (recvVec[0] != packetNumber) return -1;
+    for(int i = 1; i < recvVec.size(); i++) {
+        final.append(recvVec[i]);
+        if (i == recvVec.size() - 1) break;
+        final.append(" ");
+    }
     return size;
 }
 
-void * threadedFunction(void* pArguments) {
+int registerClient(int clientSocket, int counterRecv, int counterSend, ssize_t readed, std::string recvbf, sockaddr_in from) {
+    std::vector<std::string> loginVector;
+    std::ifstream fromRegisterFile;
+    fromRegisterFile.open(REGISTRATION_FILE);
+    std::string currentString;
+    if (fromRegisterFile.is_open()) {
+        while(getline(fromRegisterFile, currentString)) {
+            std::vector<std::string> temp;
+            temp = split(currentString, " ");
+            loginVector.push_back(temp[0] + " " + temp[1]);
+        }
+        fromRegisterFile.close();
+    }
+
+    std::ofstream registerFile;
+    registerFile.open(REGISTRATION_FILE, std::ios::app);
+    while(true) {
+        char endFunc[DEFAULT_BUFLEN] = "FUNCTION END";
+        sendOneTime(clientSocket, endFunc, from, std::to_string(counterSend++));
+        counterRecv = 0;
+        counterSend = 0;
+        recvbf = "";
+        readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from, std::to_string(counterRecv ++));
+        if (readed < 0) {
+            break;
+        }
+
+        std::string infoString(recvbf);
+        if(split(infoString, " ").size() == 2) {
+            bool flag = false;//для выхода из цикла
+            for(unsigned int i = 0; i < loginVector.size(); i++) {
+                if (loginVector[i] == infoString) {
+                    bool isOnline = false;//залогинен ли
+                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+                        if (loggedInClients[i].second == infoString) {
+                            isOnline = true;
+                            break;
+                        }
+                    }
+                    if (!isOnline) {
+                        char successfulLogin[DEFAULT_BUFLEN] = SUCCESSFUL_LOGIN;
+                        loggedInClients.emplace_back(std::make_pair(clientSocket, infoString));
+                        sendOneTime(clientSocket, successfulLogin, from, std::to_string(counterSend ++));
+                        flag = true;
+                    } else {
+                        char alreadyOnline[DEFAULT_BUFLEN] = ALREADY_ONLINE;
+                        sendOneTime(clientSocket, alreadyOnline, from, std::to_string(counterSend ++));
+                    }
+                    break;
+                }
+            }
+            if (flag)
+                break;
+            else {
+                bool noLogin = false;
+                for(unsigned int i = 0; i < loginVector.size(); i++) {
+                    if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
+                        char badLogin[DEFAULT_BUFLEN] = BAD_LOGIN;
+                        sendOneTime(clientSocket, badLogin, from, std::to_string(counterSend ++));
+                        noLogin = true;//есть логин
+                        break;
+                    }
+                }
+                if (!noLogin) {//если нет такого логина
+                    bool reLogin = false;
+                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
+                        if (loggedInClients[i].first == clientSocket) {
+                            loggedInClients[i].second = infoString;
+                            reLogin = true;
+                            break;
+                        }
+                    }
+                    if (!reLogin) {
+                        loggedInClients.push_back(std::make_pair(clientSocket, infoString));
+                    }
+                    infoString = infoString + " no_result\n";
+                    registerFile << infoString;
+                    registerFile.close();
+                    char successfulRegistration[DEFAULT_BUFLEN] = SUCCESSFUL_REGISTERED;
+                    sendOneTime(clientSocket, successfulRegistration, from, std::to_string(counterSend ++));
+                    break;
+                }
+            }
+        } else {
+            char wrongNumber[DEFAULT_BUFLEN] = WRONG_NUMBER;
+            sendOneTime(clientSocket, wrongNumber, from, std::to_string(counterSend ++));
+        }
+    }
+    return counterSend;
+}
+
+int showListOfTests(int clientSocket, int counterSend, sockaddr_in from) {
+
+    std::ifstream file;
+    std::string nameFile = "list_tests.txt";
+    file.open (nameFile.c_str());
+    if (file.is_open()) {
+        std::string listTests = "";
+        std::string test;
+
+        while (std::getline(file, test)) {
+            listTests.append(test + "\n");
+        }
+        file.close();
+        sendn(clientSocket, const_cast<char *>(listTests.c_str()), listTests.length(), from, counterSend);
+    }
+    return counterSend;
+}
+
+int startTest(int clientSocket, int counterRecv, int counterSend, std::string recvbuf, sockaddr_in from) {
+    std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
+
+    if ((splitVect.size() > 1) && (splitVect[0] == GET_TEST)) {
+        std::string currentClientInfo = NO_INFO;
+        for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+            if (loggedInClients[i].first == clientSocket) {
+                currentClientInfo = loggedInClients[i].second;
+                break;
+            }
+        }
+        if (currentClientInfo != NO_INFO) {
+            std::string testString = "test" + splitVect[1] + ".txt";
+            std::string ansTestString = "ans" + testString;
+            std::ifstream file;
+            std::string question;
+            std::vector<std::string> vec;
+            int summary = 0;
+            file.open(testString);
+            if (file.is_open()) {
+                std::vector<std::string> askVector;
+                std::getline(file, question);
+                while(question != Q_END) {
+                    if(question == QUESTION) {
+                        std::getline(file, question);
+                        sendn(clientSocket, const_cast<char *>(question.c_str()),
+                              static_cast<int>(question.length()), from, counterSend);
+                        std::getline(file, question);
+                    } else if (question == ANSWER) {
+                        std::getline(file, question);
+                        std::string ansToSend = "";
+                        while (question != QUESTION && question != Q_END) {
+                            ansToSend = ansToSend + question + "\n";
+                            std::getline(file, question);
+                        }
+                        std::cout<<ansToSend;
+                        char buf[ansToSend.length()];
+                        for (int i = 0; i < ansToSend.length(); i++) {
+                            buf[i] = ansToSend[i];
+                        }
+                        buf[ansToSend.length()] = '\0';
+                        sendOneTime(clientSocket, buf, from, std::to_string(counterSend++));
+                        std::string ansString;
+                        char endFunc[DEFAULT_BUFLEN] = "FUNCTION END";
+                        sendOneTime(clientSocket, endFunc, from, std::to_string(counterSend++));
+                        counterRecv = 0;
+                        counterSend = 0;
+                        recvOneTime(clientSocket, ansString, DEFAULT_BUFLEN, from, std::to_string(counterRecv++));
+                        vec.emplace_back(ansString);
+                    }
+                }
+
+
+                file.close();
+
+                std::ifstream ansFile;
+                ansFile.open((ansTestString));
+                std::string answer;
+                if (ansFile.is_open()) {
+                    int counter = 0;
+                    while(getline(ansFile, answer)) { //Проверяем ответы клиента
+                        if (vec[counter] == answer) {
+                            summary++;
+                        }
+                        counter++;
+                    }
+                }
+                ansFile.close();
+                char conv[DEFAULT_BUFLEN];
+                sprintf(conv, "%d", summary);
+                char numberOfQuest[DEFAULT_BUFLEN];
+                sprintf(numberOfQuest, "%d", static_cast<int>(vec.size()));
+                char resultingString[DEFAULT_BUFLEN] = YOUR_NEW_RESULT;
+                std::string toConcat = std::string(conv) + " out of " + std::string(numberOfQuest);
+                strcat(resultingString, toConcat.c_str());
+                sendOneTime(clientSocket, resultingString, from, std::to_string(counterSend++));
+                std::string toRegisterFile = std::string(conv) + "_out_of_" + std::string(numberOfQuest);
+                std::string currentClientInfo = NO_INFO;
+                for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+                    if (loggedInClients[i].first == clientSocket) {
+                        currentClientInfo = loggedInClients[i].second;
+                        break;
+                    }
+                }
+                std::vector<std::string> copyVector; //Запись последнего результата в файл
+                if (currentClientInfo != NO_INFO) {
+                    std::ifstream fromRegisterFile;
+                    fromRegisterFile.open(REGISTRATION_FILE);
+                    std::string currentString;
+                    if (fromRegisterFile.is_open()) {
+                        while(getline(fromRegisterFile, currentString)) {
+                            std::vector<std::string> temp;
+                            temp = split(currentString, " ");
+                            if (currentClientInfo == temp[0] + " " + temp[1]) {
+                                copyVector.push_back(temp[0] + " " + temp[1] + " " + toRegisterFile);
+                            } else {
+                                copyVector.push_back(temp[0] + " " + temp[1] + " " + temp[2]);
+                            }
+                        }
+                        fromRegisterFile.close();
+                    }
+                    std::ofstream toRegisterFile;
+                    toRegisterFile.open(REGISTRATION_FILE);
+                    for(unsigned int i = 0; i < copyVector.size(); i++) {
+                        toRegisterFile<< copyVector[i] + "\n";
+                    }
+                    toRegisterFile.close();
+                }
+            }
+
+        } else {
+            char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
+            sendOneTime(clientSocket, registerFirst, from, std::to_string(counterSend++));
+        }
+    }
+    return counterSend;
+}
+
+int getResult(int clientSocket, int counterSend, sockaddr_in from) {
+    std::string currentClientInfo = NO_INFO;
+    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+        if (loggedInClients[i].first == clientSocket) {
+            currentClientInfo = loggedInClients[i].second;
+            break;
+        }
+    }
+    if (currentClientInfo != NO_INFO) {//сюда не зайти, если не залогинен
+        std::ifstream fromRegisterFile;
+        fromRegisterFile.open(REGISTRATION_FILE);
+        std::string currentString;
+        if (fromRegisterFile.is_open()) {
+            while(getline(fromRegisterFile, currentString)) {
+                std::vector<std::string> temp;
+                temp = split(currentString, " ");
+                if (currentClientInfo == temp[0] + " " + temp[1]) {
+                    char yourResult[DEFAULT_BUFLEN] = YOUR_RESULT;
+                    strcat(yourResult, temp[2].c_str());
+                    sendOneTime(clientSocket, yourResult, from, std::to_string(counterSend++));
+                }
+            }
+            fromRegisterFile.close();
+        }
+    } else {
+        char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
+        sendOneTime(clientSocket, registerFirst, from, std::to_string(counterSend++));
+    }
+    return counterSend;
+}
+
+void * workingFlow (void* pArguments) {
 
     int clientSocket = *(int*) pArguments;
     struct sockaddr_in from{};
-    socklen_t fromlen = sizeof(from);
 
     ssize_t readed;
     do {
-        //char recvbf[DEFAULT_BUFLEN];
-        int recvbuflen = DEFAULT_BUFLEN;
 
         std::string recvbf;
-        if ((readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from)) <= 0) {
+        int counterRecv = 0;
+        int counterSend = 0;
+        if ((readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from, std::to_string(counterRecv))) <= 0) {
             shutdown(clientSocket, 2);
             close(clientSocket);
             break;
@@ -151,361 +378,31 @@ void * threadedFunction(void* pArguments) {
         std::string recvbuf = std::string(recvbf);
         std::cout << "Bytes read: " << readed << std::endl;
         std::cout << recvbuf << std::endl;
-        if (recvbuf == END_STRING) { //8) Обработка запроса на отключение клиента
-            shutdown(clientSocket, 2);
-            close(clientSocket);
-            int deleteSock = -1;
-            pthread_mutex_lock(&mainThreadMutex);
-
-            for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                if (poolOfSockets[i].second == clientSocket) {
-                    deleteSock = i;
-                    break;
-                }
-            }
-            if (deleteSock != -1) poolOfSockets.erase(poolOfSockets.begin() + deleteSock);
-            pthread_mutex_unlock(&mainThreadMutex);
-            break;
-        } else {
             if (std::string(recvbuf) == REGISTER_STRING) { //4) Регистрация клиента
-                std::vector<std::string> loginVector;
-                std::ifstream fromRegisterFile;
-                fromRegisterFile.open(REGISTRATION_FILE);
-                std::string currentString;
-                if (fromRegisterFile.is_open()) {
-                    while(getline(fromRegisterFile, currentString)) {
-                        std::vector<std::string> temp;
-                        temp = split(currentString, " ");
-                        loginVector.push_back(temp[0] + " " + temp[1]);
-                    }
-                    fromRegisterFile.close();
-                }
-
-                std::ofstream registerFile;
-                registerFile.open(REGISTRATION_FILE, std::ios::app);
-                while(true) {
-                    readed = recvOneTime(clientSocket, recvbf, DEFAULT_BUFLEN, from);
-                    if (readed < 0) {
-                        break;
-                    }
-
-                    std::string infoString(recvbf);
-                    if(split(infoString, " ").size() == 2) {
-                        bool flag = false;//для выхода из цикла
-                        for(unsigned int i = 0; i < loginVector.size(); i++) {
-                            if (loginVector[i] == infoString) {
-                                bool isOnline = false;//залогинин ли
-                                for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                    if (loggedInClients[i].second == infoString) {
-                                        isOnline = true;
-                                        break;
-                                    }
-                                }
-                                if (!isOnline) {
-                                    char successfulLogin[DEFAULT_BUFLEN] = SUCCESSFUL_LOGIN;
-                                    loggedInClients.emplace_back(std::make_pair(clientSocket, infoString));
-                                    sendn(clientSocket, successfulLogin, static_cast<int>(strlen(successfulLogin)), &from, fromlen);
-                                    flag = true;
-                                } else {
-                                    char alreadyOnline[DEFAULT_BUFLEN] = ALREADY_ONLINE;
-                                    sendn(clientSocket, alreadyOnline, static_cast<int>(strlen(alreadyOnline)), &from, fromlen);
-                                }
-                                break;
-                            }
-                        }
-                        if (flag)
-                            break;
-                        else {
-                            bool noLogin = false;
-                            for(unsigned int i = 0; i < loginVector.size(); i++) {
-                                if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
-                                    char badLogin[DEFAULT_BUFLEN] = BAD_LOGIN;
-                                    sendn(clientSocket, badLogin, static_cast<int>(strlen(badLogin)), &from, fromlen);
-                                    noLogin = true;//есть логин
-                                    break;
-                                }
-                            }
-                            if (!noLogin) {//если нет такого логина
-                                bool reLogin = false;
-                                for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
-                                    if (loggedInClients[i].first == clientSocket) {
-                                        loggedInClients[i].second = infoString;
-                                        reLogin = true;
-                                        break;
-                                    }
-                                }
-                                if (!reLogin) {
-                                    loggedInClients.push_back(std::make_pair(clientSocket, infoString));
-                                }
-                                infoString = infoString + " no_result\n";
-                                registerFile << infoString;
-                                registerFile.close();
-                                char successfulRegistration[DEFAULT_BUFLEN] = SUCCESSFUL_REGISTERED;
-                                sendn(clientSocket, successfulRegistration,
-                                      static_cast<int>(strlen(successfulRegistration)), &from, fromlen);
-                                break;
-                            }
-                        }
-                    } else {
-                        char wrongNumber[DEFAULT_BUFLEN] = WRONG_NUMBER;
-                        sendn(clientSocket, wrongNumber, static_cast<int>(strlen(wrongNumber)), &from, fromlen);
-                    }
-                }
+                counterSend = registerClient(clientSocket, counterRecv, counterSend, readed, recvbf, from);
             } else {
                 if (recvbuf == SHOW_TESTS_STRING) { //4) Выдача клиенту списка тестов
-                    std::ifstream file;
-                    std::string nameFile = "list_tests.txt";
-                    file.open (nameFile.c_str());
-                    if (file.is_open()) {
-                        std::string listTests = "";
-                        std::string test;
-
-                        while (std::getline(file, test)) {
-                            listTests.append(test + "\n");
-                        }
-                        file.close();
-                        //sendOneTime(clientSocket, const_cast<char *>(listTests.c_str()),
-                         //     listTests.length(), from);
-                        sendto(clientSocket, listTests.c_str(), DEFAULT_BUFLEN, 0,( sockaddr *)(&from), fromlen);
-                        char checkbuf[DEFAULT_BUFLEN];
-                        recvfrom(clientSocket, checkbuf, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), &fromlen);
-                    }
+                    counterSend = showListOfTests(clientSocket, counterSend, from);
                 } else {
                     if (recvbuf == GET_TEST_RESULT) { //4) Выдача клиенту результата его последнего теста
-                        std::string currentClientInfo = NO_INFO;
-                        for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                            if (loggedInClients[i].first == clientSocket) {
-                                currentClientInfo = loggedInClients[i].second;
-                                break;
-                            }
-                        }
-                        if (currentClientInfo != NO_INFO) {//сюда не зайти, если не залогинен
-                            std::ifstream fromRegisterFile;
-                            fromRegisterFile.open(REGISTRATION_FILE);
-                            std::string currentString;
-                            if (fromRegisterFile.is_open()) {
-                                while(getline(fromRegisterFile, currentString)) {
-                                    std::vector<std::string> temp;
-                                    temp = split(currentString, " ");
-                                    if (currentClientInfo == temp[0] + " " + temp[1]) {
-                                        char yourResult[DEFAULT_BUFLEN] = YOUR_RESULT;
-                                        strcat(yourResult, temp[2].c_str());
-                                        sendn(clientSocket, yourResult, static_cast<int>(strlen(yourResult)), &from, fromlen);
-                                    }
-                                }
-                                fromRegisterFile.close();
-                            }
-                        } else {
-                            char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
-                            sendn(clientSocket, registerFirst, static_cast<int>(strlen(registerFirst)), &from, fromlen);
-                        }
+                        counterSend = getResult(clientSocket, counterSend, from);
 
                     } else { //5) Получение от клиента номера теста
-                        std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
-
-                        if ((splitVect.size() > 1) && (splitVect[0] == GET_TEST)) {
-                            std::string currentClientInfo = NO_INFO;
-                            for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                if (loggedInClients[i].first == clientSocket) {
-                                    currentClientInfo = loggedInClients[i].second;
-                                    break;
-                                }
-                            }
-                            if (currentClientInfo != NO_INFO) {
-                                std::string testString = "test" + splitVect[1] + ".txt";
-                                std::string ansTestString = "ans" + testString;
-                                std::ifstream file;
-                                std::string question;
-                                std::vector<std::string> vec;
-                                int summary = 0;
-                                file.open(testString.c_str());
-                                if (file.is_open()) {
-                                    std::vector<std::string> askVector;
-                                    std::getline(file, question);
-                                    while(question != Q_END) {
-                                        if(question == QUESTION) {
-                                            std::getline(file, question);
-                                            sendn(clientSocket, const_cast<char *>(question.c_str()),
-                                                  static_cast<int>(question.length()), &from, fromlen);
-                                            std::getline(file, question);
-                                        } else if (question == ANSWER) {
-                                            std::getline(file, question);
-                                            std::string ansToSend = "";
-                                            while (question != QUESTION && question != Q_END) {
-                                                ansToSend = ansToSend + question + "\n";
-                                                std::getline(file, question);
-                                            }
-                                            std::cout<<ansToSend;
-                                            char buf[ansToSend.length()];
-                                            for (int i = 0; i < ansToSend.length(); i++) {
-                                                buf[i] = ansToSend[i];
-                                            }
-                                            buf[ansToSend.length()] = '\0';
-                                            sendn(clientSocket, buf, static_cast<int>(strlen(buf)), &from, fromlen);
-                                            //recvfrom(clientSocket, recvbf, 2 * DEFAULT_BUFLEN, 0,
-                                                     //(sockaddr *) (&from), &fromlen); //6) Получение ответов на вопросы
-                                            std::vector<std::string> temp = split(std::string(recvbf), " ");
-                                            sendn(clientSocket, const_cast<char *>(("0 " + temp[0]).c_str()), DEFAULT_BUFLEN, &from, fromlen);
-                                            recvbuf = "";
-                                            for (int i = 1; i < temp.size(); i++)
-                                                recvbuf.append(temp[i]);
-                                            vec.emplace_back(std::string(recvbuf));
-                                        }
-                                    }
-
-
-                                    file.close();
-
-                                    std::ifstream ansFile;
-                                    ansFile.open((ansTestString.c_str()));
-                                    std::string answer;
-                                    if (ansFile.is_open()) {
-                                        int counter = 0;
-                                        while(getline(ansFile, answer)) { //Проверяем ответы клиента
-                                            if (vec[counter] == answer) {
-                                                summary++;
-                                            }
-                                            counter++;
-                                        }
-                                    }
-                                    ansFile.close();
-                                    char conv[DEFAULT_BUFLEN];
-                                    sprintf(conv, "%d", summary);
-                                    char numberOfQuest[DEFAULT_BUFLEN];
-                                    sprintf(numberOfQuest, "%d", static_cast<int>(vec.size()));
-                                    char resultingString[DEFAULT_BUFLEN] = YOUR_NEW_RESULT;
-                                    std::string toConcat = std::string(conv) + " out of " + std::string(numberOfQuest);
-                                    strcat(resultingString, toConcat.c_str());
-                                    sendn(clientSocket, resultingString, static_cast<int>(strlen(resultingString)), &from, fromlen);
-                                    std::string toRegisterFile = std::string(conv) + "_out_of_" + std::string(numberOfQuest);
-                                    std::string currentClientInfo = NO_INFO;
-                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                        if (loggedInClients[i].first == clientSocket) {
-                                            currentClientInfo = loggedInClients[i].second;
-                                            break;
-                                        }
-                                    }
-                                    std::vector<std::string> copyVector; //Запись последнего результата в файл
-                                    if (currentClientInfo != NO_INFO) {
-                                        std::ifstream fromRegisterFile;
-                                        fromRegisterFile.open(REGISTRATION_FILE);
-                                        std::string currentString;
-                                        if (fromRegisterFile.is_open()) {
-                                            while(getline(fromRegisterFile, currentString)) {
-                                                std::vector<std::string> temp;
-                                                temp = split(currentString, " ");
-                                                if (currentClientInfo == temp[0] + " " + temp[1]) {
-                                                    copyVector.push_back(temp[0] + " " + temp[1] + " " + toRegisterFile);
-                                                } else {
-                                                    copyVector.push_back(temp[0] + " " + temp[1] + " " + temp[2]);
-                                                }
-                                            }
-                                            fromRegisterFile.close();
-                                        }
-                                        std::ofstream toRegisterFile;
-                                        toRegisterFile.open(REGISTRATION_FILE);
-                                        for(unsigned int i = 0; i < copyVector.size(); i++) {
-                                            toRegisterFile<< copyVector[i] + "\n";
-                                        }
-                                        toRegisterFile.close();
-                                    }
-                                }
-                            } else {
-                                char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
-                                sendn(clientSocket, registerFirst, static_cast<int>(strlen(registerFirst)), &from, fromlen);
-                            }
-                        }
+                        counterSend = startTest(clientSocket, counterRecv, counterSend, recvbuf, from);
                     }
                 }
             }
-        }
+        char endFunc[DEFAULT_BUFLEN] = "FUNCTION END";
+        sendOneTime(clientSocket, endFunc, from, std::to_string(counterSend++));
     } while (readed > 0);
-
 }
 
 
-
-void * acceptThreadFunction(void* pArguments) { //Поток для принятия клиентов
-    int listenSocket = *(int*) pArguments;
-    std::vector< pthread_t > myThreadHandlers;
-    int connectionsCounter = 0;
-    int portnum = 2000;
-
-    while(true){
-        char buf[DEFAULT_BUFLEN];
-        std::string recvbuf;
-        struct sockaddr_in from{};
-        socklen_t fromlen = sizeof(from);
-
-        ssize_t res = recvfrom(listenSocket, buf, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), &fromlen);
-        if (res <= 0) break;
-        std::cout << buf << std::endl;
-        char bufy[DEFAULT_BUFLEN] = "0 0";
-        sendto(listenSocket, bufy, DEFAULT_BUFLEN, 0, (sockaddr *)(&from), fromlen);
-
-        //ssize_t recvBytes = recvOneTime(listenSocket, recvbuf, DEFAULT_BUFLEN, from);
-        //if (recvBytes <= 0) break;
-        struct addrinfo *result = nullptr;
-        struct addrinfo hints{};
-
-        bzero(&hints, sizeof(hints));
-        hints.ai_family = AF_INET;
-        hints.ai_socktype = SOCK_DGRAM;
-        hints.ai_protocol = IPPROTO_UDP;
-        hints.ai_flags = AI_PASSIVE;
-
-        int iResult = getaddrinfo(nullptr, std::to_string(portnum).c_str(), &hints, &result);
-        if (iResult != 0) {
-            std::cout << "getaddrinfo failed with error "<< std::endl;
-        }
-
-        int eachConnectionSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
-        if (eachConnectionSocket == -1) {
-            std::cout << "socket failed with error\n";
-            freeaddrinfo(result);
-        }
-        iResult = bind(eachConnectionSocket, result->ai_addr, (int) result->ai_addrlen);
-        if (iResult == -1) {
-            std::cout << "bind failed with error \n";
-            freeaddrinfo(result);
-            shutdown(eachConnectionSocket, 2);
-            close(eachConnectionSocket);
-        }
-        std::string portString = std::to_string(portnum);
-        char buffer[DEFAULT_BUFLEN] = "";
-        snprintf(buffer, DEFAULT_BUFLEN, "%d", portnum);
-        std::cout << buffer << std::endl;
-        //if(sendOneTime(listenSocket, buffer, DEFAULT_BUFLEN, from) == 1) break;
-
-        sendto(listenSocket, buffer, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), fromlen);
-        recvfrom(listenSocket, buffer, DEFAULT_BUFLEN, 0,( sockaddr *)(&from), &fromlen);
-        std::cout << buffer << std::endl;
-        pthread_mutex_lock(&mainThreadMutex);
-        poolOfSockets.emplace_back(std::make_pair(connectionsCounter, eachConnectionSocket));
-        pthread_t workingThread;
-        pthread_create(&workingThread, nullptr, &threadedFunction, (void*) &eachConnectionSocket);
-        myThreadHandlers.emplace_back(workingThread);
-        printf("new client connected with id: %d\n", connectionsCounter);
-        connectionsCounter ++;
-        portnum += 1;
-        pthread_mutex_unlock(&mainThreadMutex);
-    }
-    printf(CLOSING_CONNECT);
-    for (int i = 0; i < poolOfSockets.size(); i ++) {
-        shutdown(poolOfSockets[i].second, 2);
-        close(poolOfSockets[i].second);
-    }
-    poolOfSockets.clear();
-    for (int i = 0; i < myThreadHandlers.size(); i++) {
-        pthread_join(myThreadHandlers[i], nullptr);
-    }
-
-}
 int main()
 {
     int iResult;
 
-    int listenSocket = -1;
+    int listenSocket;
     pthread_t acceptThreadHandler;
 
     struct addrinfo *result = nullptr;
@@ -547,13 +444,15 @@ int main()
         return 1;
     }
 
-    pthread_create(&acceptThreadHandler, nullptr, &acceptThreadFunction, (void*) &listenSocket);
+
+    pthread_attr_t attr;
+    pthread_attr_init(&attr);
+    pthread_create(&acceptThreadHandler, &attr, &workingFlow, &listenSocket);
 
     pthread_mutex_init(&mainThreadMutex, nullptr);
 
     while (true) {
         std::string str;
-        int num = -1;
         printf(CHOOSE_OPERATION);
         std::getline(std::cin, str);
         if (str == END_STRING) {
@@ -562,37 +461,6 @@ int main()
             close(listenSocket);
             pthread_join(acceptThreadHandler, nullptr);
             break;
-        } else {
-            if (str == CLOSE_CLIENT_STRING) {//9) Принудительное отключение клиента
-                printf(CLIENT_DISCONNECT);
-                std::string strNum;
-                std::getline(std::cin, strNum);
-                num = atoi(strNum.c_str());
-                pthread_mutex_lock(&mainThreadMutex);
-                int indexToDelete = -1;
-                for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                    if (poolOfSockets[i].first == num) {
-                        indexToDelete = i;
-                        break;
-                    }
-                }
-                if (indexToDelete != -1) {
-                    shutdown(poolOfSockets[indexToDelete].second, 2);
-                    close(poolOfSockets[indexToDelete].second);
-                    poolOfSockets.erase(poolOfSockets.begin() + indexToDelete);
-                }
-                pthread_mutex_unlock(&mainThreadMutex);
-            } else {
-                if (str == SHOW_CLIENTS_STRING) {
-                    printf(AVAILABLE_CLIENTS);
-                    pthread_mutex_lock(&mainThreadMutex);
-                    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                        printf("%d, ", poolOfSockets[i].first);
-                    }
-                    printf("\n");
-                    pthread_mutex_unlock(&mainThreadMutex);
-                }
-            }
         }
     }
     return 0;
