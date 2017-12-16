@@ -94,6 +94,262 @@ int readn(int newsockfd, char *buffer, int n) {
         return n - nLeft;
 }
 
+void closeClient(SOCKET clientSocket) {
+    shutdown(clientSocket, 2);
+    closesocket(clientSocket);
+                int deleteSock;
+                WaitForSingleObject(mainThreadMutex, INFINITE);
+
+                for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
+                    if (poolOfSockets[i].second == clientSocket) {
+                        deleteSock = i;
+                        break;
+                    }
+                }
+                poolOfSockets.erase(poolOfSockets.begin() + deleteSock);
+                ReleaseMutex(mainThreadMutex);
+}
+
+void registerClient(SOCKET clientSocket, int readed, char recvbuf[], int recvbuflen) {
+    std::vector<std::string> loginVector;
+    std::ifstream fromRegisterFile;
+    fromRegisterFile.open(REGISTRATION_FILE);
+    std::string currentString;
+    if (fromRegisterFile.is_open()) {
+        while(getline(fromRegisterFile, currentString)) {
+            std::vector<std::string> temp;
+            temp = split(currentString, " ");
+            loginVector.push_back(temp[0] + " " + temp[1]);
+        }
+        fromRegisterFile.close();
+    }
+
+    std::ofstream registerFile;
+    registerFile.open(REGISTRATION_FILE, std::ios::app);
+    while(true) {
+        readed = readn(clientSocket, recvbuf, recvbuflen);
+        if (readed < 0) {
+            break;
+        }
+        std::string infoString(recvbuf);
+        if(split(infoString, " ").size() == 2) {
+            bool flag = false;//для выхода из цикла
+            for(unsigned int i = 0; i < loginVector.size(); i++) {
+                if (loginVector[i] == infoString) {
+                    bool isOnline = false;//залогинин ли
+                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+                        if (loggedInClients[i].second == infoString) {
+                            isOnline = true;
+                            break;
+                        }
+                    }
+                    if (!isOnline) {
+                        char successfulLogin[DEFAULT_BUFLEN] = SUCCESSFUL_LOGIN;
+                        loggedInClients.push_back(std::make_pair(clientSocket, infoString));
+                        sendn(clientSocket, successfulLogin, strlen(successfulLogin));
+                        flag = true;
+                    } else {
+                        char alreadyOnline[DEFAULT_BUFLEN] = ALREADY_ONLINE;
+                        sendn(clientSocket, alreadyOnline, strlen(alreadyOnline));
+                    }
+                    break;
+                }
+            }
+            if (flag == true)
+                break;
+            else {
+                bool noLogin = false;
+                for(unsigned int i = 0; i < loginVector.size(); i++) {
+                    if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
+                        char badLogin[DEFAULT_BUFLEN] = BAD_LOGIN;
+                        sendn(clientSocket, badLogin, strlen(badLogin));
+                        noLogin = true;//есть логин
+                        break;
+                    }
+                }
+                if (noLogin == false) {//если нет такого логина
+                    bool reLogin = false;
+                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
+                        if (loggedInClients[i].first == clientSocket) {
+                            loggedInClients[i].second = infoString;
+                            reLogin = true;
+                            break;
+                        }
+                    }
+                    if (!reLogin) {
+                        loggedInClients.push_back(std::make_pair(clientSocket, infoString));
+                    }
+                    infoString = infoString + " no_result\n";
+                    registerFile << infoString;
+                    registerFile.close();
+                    char successfulRegistration[DEFAULT_BUFLEN] = SUCCESSFUL_REGISTERED;
+                    sendn(clientSocket, successfulRegistration, strlen(successfulRegistration));
+                    break;
+                }
+            }
+        } else {
+            char wrongNumber[DEFAULT_BUFLEN] = WRONG_NUMBER;
+            sendn(clientSocket, wrongNumber, strlen(wrongNumber));
+        }
+    }
+}
+
+void showListOfTests (SOCKET clientSocket) {
+    std::ifstream file;
+    std::string nameFile = "list_tests.txt";
+    file.open (nameFile.c_str());
+    if (file.is_open()) {
+        std::string listTests = "";
+        std::string test;
+
+        while (std::getline(file, test)) {
+            listTests = listTests + test + "\n";
+        }
+        file.close();
+        sendn(clientSocket, const_cast< char* >(listTests.c_str()), listTests.length());
+    }
+}
+
+void getResult (SOCKET clientSocket) {
+    std::string currentClientInfo = NO_INFO;
+    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+        if (loggedInClients[i].first == clientSocket) {
+            currentClientInfo = loggedInClients[i].second;
+            break;
+        }
+    }
+    if (currentClientInfo != NO_INFO) {//сюда не зайти, если не залогинен
+        std::ifstream fromRegisterFile;
+        fromRegisterFile.open(REGISTRATION_FILE);
+        std::string currentString;
+        if (fromRegisterFile.is_open()) {
+            while(getline(fromRegisterFile, currentString)) {
+                std::vector<std::string> temp;
+                temp = split(currentString, " ");
+                if (currentClientInfo == temp[0] + " " + temp[1]) {
+                    char yourResult[DEFAULT_BUFLEN] = YOUR_RESULT;
+                    strcat(yourResult, temp[2].c_str());
+                    sendn(clientSocket, yourResult, strlen(yourResult));
+                }
+            }
+            fromRegisterFile.close();
+        }
+    } else {
+        char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
+        sendn(clientSocket, registerFirst, strlen(registerFirst));
+    }
+}
+
+void getTest (SOCKET clientSocket, char recvbuf []) {
+    std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
+
+    if ((splitVect.size() > 1) && (splitVect[0] == GET_TEST)) {
+        std::string currentClientInfo = NO_INFO;
+        for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+            if (loggedInClients[i].first == clientSocket) {
+                currentClientInfo = loggedInClients[i].second;
+                break;
+            }
+        }
+        if (currentClientInfo != NO_INFO) {
+            std::string testString = "test" + splitVect[1] + ".txt";
+            std::string ansTestString = "ans" + testString;
+            std::ifstream file;
+            std::string question;
+            std::vector<std::string> vec;
+            int summary = 0;
+            file.open(testString.c_str());
+            if (file.is_open()) {
+                std::vector<std::string> askVector;
+                std::getline(file, question);
+                while(question != Q_END) {
+                    if(question == QUESTION) {
+                        std::getline(file, question);
+                        sendn(clientSocket, const_cast<char *>(question.c_str()), question.length());
+                        std::getline(file, question);
+                    } else if (question == ANSWER) {
+                        std::getline(file, question);
+                        std::string ansToSend = "";
+                        while (question != QUESTION && question != Q_END) {
+                            ansToSend = ansToSend + question + "\n";
+                            std::getline(file, question);
+                        }
+                        std::cout<<ansToSend;
+                        char buf[ansToSend.length()];
+                        for (int i = 0; i < ansToSend.length(); i++) {
+                            buf[i] = ansToSend[i];
+                        }
+                        buf[ansToSend.length()] = '\0';
+                        sendn(clientSocket, buf, strlen(buf));
+                        readn(clientSocket, recvbuf, DEFAULT_BUFLEN); //6) Получение ответов на вопросы
+                        vec.push_back(std::string(recvbuf));
+                    }
+                }
+
+
+                file.close();
+
+                std::ifstream ansFile;
+                ansFile.open((ansTestString.c_str()));
+                std::string answer;
+                if (ansFile.is_open()) {
+                    int counter = 0;
+                    while(getline(ansFile, answer)) { //Проверяем ответы клиента
+                        if (vec[counter] == answer) {
+                            summary++;
+                        }
+                        counter++;
+                    }
+                }
+                ansFile.close();
+                char conv[DEFAULT_BUFLEN];
+                itoa(summary, conv, 10);
+                char numberOfQuest[DEFAULT_BUFLEN];
+                itoa(vec.size(), numberOfQuest, 10);
+                char resultingString[DEFAULT_BUFLEN] = YOUR_NEW_RESULT;
+                std::string toConcat = std::string(conv) + " out of " + std::string(numberOfQuest);
+                strcat(resultingString, toConcat.c_str());
+                sendn(clientSocket, resultingString, strlen(resultingString));
+                std::string toRegisterFile = std::string(conv) + "_out_of_" + std::string(numberOfQuest);
+                std::string currentClientInfo = NO_INFO;
+                for(unsigned int i = 0; i < loggedInClients.size(); i++) {
+                    if (loggedInClients[i].first == clientSocket) {
+                        currentClientInfo = loggedInClients[i].second;
+                        break;
+                    }
+                }
+                std::vector<std::string> copyVector; //Запись последнего результата в файл
+                if (currentClientInfo != NO_INFO) {
+                    std::ifstream fromRegisterFile;
+                    fromRegisterFile.open(REGISTRATION_FILE);
+                    std::string currentString;
+                    if (fromRegisterFile.is_open()) {
+                        while(getline(fromRegisterFile, currentString)) {
+                            std::vector<std::string> temp;
+                            temp = split(currentString, " ");
+                            if (currentClientInfo == temp[0] + " " + temp[1]) {
+                                copyVector.push_back(temp[0] + " " + temp[1] + " " + toRegisterFile);
+                            } else {
+                                copyVector.push_back(temp[0] + " " + temp[1] + " " + temp[2]);
+                            }
+                        }
+                        fromRegisterFile.close();
+                    }
+                    std::ofstream toRegisterFile;
+                    toRegisterFile.open(REGISTRATION_FILE);
+                    for(unsigned int i = 0; i < copyVector.size(); i++) {
+                        toRegisterFile<< copyVector[i] + "\n";
+                    }
+                    toRegisterFile.close();
+                }
+            }
+        } else {
+            char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
+            sendn(clientSocket, registerFirst, strlen(registerFirst));
+        }
+    }
+}
+
 unsigned int __stdcall threadedFunction(void* pArguments) {
 
         SOCKET clientSocket = *(SOCKET*) pArguments;
@@ -112,256 +368,19 @@ unsigned int __stdcall threadedFunction(void* pArguments) {
             printf("Bytes read: %d\n", readed);
             printf("Received data: %s\n", recvbuf);
             if (recvbuf == END_STRING) { //8) Обработка запроса на отключение клиента
-                shutdown(clientSocket, 2);
-                closesocket(clientSocket);
-                int deleteSock;
-                WaitForSingleObject(mainThreadMutex, INFINITE);
-
-                for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                    if (poolOfSockets[i].second == clientSocket) {
-                        deleteSock = i;
-                        break;
-                    }
-                }
-                poolOfSockets.erase(poolOfSockets.begin() + deleteSock);
-                ReleaseMutex(mainThreadMutex);
+                closeClient(clientSocket);
                 break;
             } else {
                 if (std::string(recvbuf) == REGISTER_STRING) { //4) Регистрация клиента
-                    std::vector<std::string> loginVector;
-                    std::ifstream fromRegisterFile;
-                    fromRegisterFile.open(REGISTRATION_FILE);
-                    std::string currentString;
-                    if (fromRegisterFile.is_open()) {
-                        while(getline(fromRegisterFile, currentString)) {
-                            std::vector<std::string> temp;
-                            temp = split(currentString, " ");
-                            loginVector.push_back(temp[0] + " " + temp[1]);
-                        }
-                        fromRegisterFile.close();
-                    }
-
-                    std::ofstream registerFile;
-                    registerFile.open(REGISTRATION_FILE, std::ios::app);
-                    while(true) {
-                        readed = readn(clientSocket, recvbuf, recvbuflen);
-                        if (readed < 0) {
-                            break;
-                        }
-                        std::string infoString(recvbuf);
-                        if(split(infoString, " ").size() == 2) {
-                            bool flag = false;//для выхода из цикла
-                            for(unsigned int i = 0; i < loginVector.size(); i++) {
-                                if (loginVector[i] == infoString) {
-                                    bool isOnline = false;//залогинин ли
-                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                        if (loggedInClients[i].second == infoString) {
-                                            isOnline = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!isOnline) {
-                                        char successfulLogin[DEFAULT_BUFLEN] = SUCCESSFUL_LOGIN;
-                                        loggedInClients.push_back(std::make_pair(clientSocket, infoString));
-                                        sendn(clientSocket, successfulLogin, strlen(successfulLogin));
-                                        flag = true;
-                                    } else {
-                                        char alreadyOnline[DEFAULT_BUFLEN] = ALREADY_ONLINE;
-                                        sendn(clientSocket, alreadyOnline, strlen(alreadyOnline));
-                                    }
-                                    break;
-                                }
-                            }
-                            if (flag == true)
-                                break;
-                            else {
-                                bool noLogin = false;
-                                for(unsigned int i = 0; i < loginVector.size(); i++) {
-                                    if (split(infoString, " ")[0] == split(loginVector[i], " ")[0]) {
-                                        char badLogin[DEFAULT_BUFLEN] = BAD_LOGIN;
-                                        sendn(clientSocket, badLogin, strlen(badLogin));
-                                        noLogin = true;//есть логин
-                                        break;
-                                    }
-                                }
-                                if (noLogin == false) {//если нет такого логина
-                                    bool reLogin = false;
-                                    for(unsigned int i = 0; i < loggedInClients.size(); i++) {//если клиент пытается зайти за другого юзера
-                                        if (loggedInClients[i].first == clientSocket) {
-                                            loggedInClients[i].second = infoString;
-                                            reLogin = true;
-                                            break;
-                                        }
-                                    }
-                                    if (!reLogin) {
-                                        loggedInClients.push_back(std::make_pair(clientSocket, infoString));
-                                    }
-                                    infoString = infoString + " no_result\n";
-                                    registerFile << infoString;
-                                    registerFile.close();
-                                    char successfulRegistration[DEFAULT_BUFLEN] = SUCCESSFUL_REGISTERED;
-                                    sendn(clientSocket, successfulRegistration, strlen(successfulRegistration));
-                                    break;
-                                }
-                            }
-                        } else {
-                            char wrongNumber[DEFAULT_BUFLEN] = WRONG_NUMBER;
-                            sendn(clientSocket, wrongNumber, strlen(wrongNumber));
-                        }
-                    }
+                    registerClient(clientSocket, readed, recvbuf, recvbuflen);
                 } else {
                     if (recvbuf == SHOW_TESTS_STRING) { //4) Выдача клиенту списка тестов
-                        std::ifstream file;
-                        std::string nameFile = "list_tests.txt";
-                        file.open (nameFile.c_str());
-                        if (file.is_open()) {
-                            std::string listTests = "";
-                            std::string test;
-
-                            while (std::getline(file, test)) {
-                                listTests = listTests + test + "\n";
-                            }
-                            file.close();
-                            sendn(clientSocket, const_cast< char* >(listTests.c_str()), listTests.length());
-                        }
+                        showListOfTests (clientSocket);
                     } else {
                         if (recvbuf == GET_TEST_RESULT) { //4) Выдача клиенту результата его последнего теста
-                            std::string currentClientInfo = NO_INFO;
-                            for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                if (loggedInClients[i].first == clientSocket) {
-                                    currentClientInfo = loggedInClients[i].second;
-                                    break;
-                                }
-                            }
-                            if (currentClientInfo != NO_INFO) {//сюда не зайти, если не залогинен
-                                std::ifstream fromRegisterFile;
-                                fromRegisterFile.open(REGISTRATION_FILE);
-                                std::string currentString;
-                                if (fromRegisterFile.is_open()) {
-                                    while(getline(fromRegisterFile, currentString)) {
-                                        std::vector<std::string> temp;
-                                        temp = split(currentString, " ");
-                                        if (currentClientInfo == temp[0] + " " + temp[1]) {
-                                            char yourResult[DEFAULT_BUFLEN] = YOUR_RESULT;
-                                            strcat(yourResult, temp[2].c_str());
-                                            sendn(clientSocket, yourResult, strlen(yourResult));
-                                        }
-                                    }
-                                    fromRegisterFile.close();
-                                }
-                            } else {
-                                char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
-                                sendn(clientSocket, registerFirst, strlen(registerFirst));
-                            }
-
+                            getResult (clientSocket);
                         } else { //5) Получение от клиента номера теста
-                            std::vector<std::string> splitVect = split(std::string(recvbuf), " ");
-
-                            if ((splitVect.size() > 1) && (splitVect[0] == GET_TEST)) {
-                               	std::string currentClientInfo = NO_INFO;
-                                for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                    if (loggedInClients[i].first == clientSocket) {
-                                        currentClientInfo = loggedInClients[i].second;
-                                        break;
-                                    }
-                                }
-                            if (currentClientInfo != NO_INFO) {
-                                    std::string testString = "test" + splitVect[1] + ".txt";
-                                    std::string ansTestString = "ans" + testString;
-                                    std::ifstream file;
-                                    std::string question;
-                                    std::vector<std::string> vec;
-                                    int summary = 0;
-                                    file.open(testString.c_str());
-                                    if (file.is_open()) {
-                                        std::vector<std::string> askVector;
-                                        std::getline(file, question);
-                                        while(question != Q_END) {
-                                            if(question == QUESTION) {
-                                                std::getline(file, question);
-                                                sendn(clientSocket, const_cast<char *>(question.c_str()), question.length());
-                                                std::getline(file, question);
-                                            } else if (question == ANSWER) {
-                                                std::getline(file, question);
-                                                std::string ansToSend = "";
-                                                while (question != QUESTION && question != Q_END) {
-                                                    ansToSend = ansToSend + question + "\n";
-                                                    std::getline(file, question);
-                                                }
-                                                std::cout<<ansToSend;
-                                                char buf[ansToSend.length()];
-                                                for (int i = 0; i < ansToSend.length(); i++) {
-                                                    buf[i] = ansToSend[i];
-                                                }
-                                                buf[ansToSend.length()] = '\0';
-                                                sendn(clientSocket, buf, strlen(buf));
-                                                readn(clientSocket, recvbuf, DEFAULT_BUFLEN); //6) Получение ответов на вопросы
-                                                vec.push_back(std::string(recvbuf));
-                                            }
-                                        }
-
-
-                                        file.close();
-
-                                        std::ifstream ansFile;
-                                        ansFile.open((ansTestString.c_str()));
-                                        std::string answer;
-                                        if (ansFile.is_open()) {
-                                            int counter = 0;
-                                            while(getline(ansFile, answer)) { //Проверяем ответы клиента
-                                                if (vec[counter] == answer) {
-                                                    summary++;
-                                                }
-                                                counter++;
-                                            }
-                                        }
-                                        ansFile.close();
-                                        char conv[DEFAULT_BUFLEN];
-                                        itoa(summary, conv, 10);
-                                        char numberOfQuest[DEFAULT_BUFLEN];
-                                        itoa(vec.size(), numberOfQuest, 10);
-                                        char resultingString[DEFAULT_BUFLEN] = YOUR_NEW_RESULT;
-                                        std::string toConcat = std::string(conv) + " out of " + std::string(numberOfQuest);
-                                        strcat(resultingString, toConcat.c_str());
-                                        sendn(clientSocket, resultingString, strlen(resultingString));
-                                        std::string toRegisterFile = std::string(conv) + "_out_of_" + std::string(numberOfQuest);
-                                        std::string currentClientInfo = NO_INFO;
-                                        for(unsigned int i = 0; i < loggedInClients.size(); i++) {
-                                            if (loggedInClients[i].first == clientSocket) {
-                                                currentClientInfo = loggedInClients[i].second;
-                                                break;
-                                            }
-                                        }
-                                        std::vector<std::string> copyVector; //Запись последнего результата в файл
-                                        if (currentClientInfo != NO_INFO) {
-                                            std::ifstream fromRegisterFile;
-                                            fromRegisterFile.open(REGISTRATION_FILE);
-                                            std::string currentString;
-                                            if (fromRegisterFile.is_open()) {
-                                                while(getline(fromRegisterFile, currentString)) {
-                                                    std::vector<std::string> temp;
-                                                    temp = split(currentString, " ");
-                                                    if (currentClientInfo == temp[0] + " " + temp[1]) {
-                                                        copyVector.push_back(temp[0] + " " + temp[1] + " " + toRegisterFile);
-                                                    } else {
-                                                        copyVector.push_back(temp[0] + " " + temp[1] + " " + temp[2]);
-                                                    }
-                                                }
-                                                fromRegisterFile.close();
-                                            }
-                                            std::ofstream toRegisterFile;
-                                            toRegisterFile.open(REGISTRATION_FILE);
-                                            for(unsigned int i = 0; i < copyVector.size(); i++) {
-                                                toRegisterFile<< copyVector[i] + "\n";
-                                            }
-                                            toRegisterFile.close();
-                                        }
-                                    }
-                                } else {
-                                    char registerFirst[DEFAULT_BUFLEN] = REGISTER_FIRST;
-                                    sendn(clientSocket, registerFirst, strlen(registerFirst));
-                                }
-                            }
+                            getTest (clientSocket, recvbuf);
                         }
                     }
                 }

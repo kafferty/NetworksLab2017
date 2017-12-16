@@ -1,0 +1,38 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/user/Рабочий стол/ServerUDP_Linux/main.cpp
+iostream
+-
+stdlib.h
+-
+stdio.h
+-
+vector
+-
+arpa/inet.h
+-
+netdb.h
+-
+netinet/in.h
+-
+unistd.h
+-
+sys/socket.h
+-
+pthread.h
+-
+fstream
+-
+algorithm
+-
+cstring
+-
+unordered_map
+-
+

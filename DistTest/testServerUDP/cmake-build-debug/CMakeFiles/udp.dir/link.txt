@@ -1,0 +1,1 @@
+/usr/bin/c++  -g   CMakeFiles/udp.dir/main.cpp.o  -o udp -lpthread 
