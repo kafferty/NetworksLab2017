@@ -350,7 +350,7 @@ void getTest (SOCKET clientSocket, char recvbuf []) {
     }
 }
 
-unsigned int __stdcall threadedFunction(void* pArguments) {
+unsigned int __stdcall workingFlow(void* pArguments) {
 
         SOCKET clientSocket = *(SOCKET*) pArguments;
 
@@ -405,7 +405,7 @@ unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток д�
             }
             WaitForSingleObject(mainThreadMutex, INFINITE);
             poolOfSockets.push_back(std::make_pair(connectionsCounter, clientSocket));
-            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &threadedFunction, (void*) &clientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
+            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &workingFlow, (void*) &clientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
             printf("new client connected with id: %d\n", connectionsCounter);
             connectionsCounter ++;
             ReleaseMutex(mainThreadMutex);
