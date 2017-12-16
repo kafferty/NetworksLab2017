@@ -80,34 +80,34 @@ int sendn(int sendSocket, char *buffer, int n) { // Функция, посыла
 }
 
 int readn(int newsockfd, char *buffer, int n) {
-        int nLeft = n;
-        int k;
-        while (nLeft > 0) {
-            k = recv(newsockfd, buffer, nLeft, 0);
-            if (k < 0) {
-                perror("ERROR reading from socket");
-                return -1;
-            } else if (k == 0) break;
-            buffer = buffer + k;
-            nLeft = nLeft - k;
-        }
-        return n - nLeft;
+    int nLeft = n;
+    int k;
+    while (nLeft > 0) {
+        k = recv(newsockfd, buffer, nLeft, 0);
+        if (k < 0) {
+            perror("ERROR reading from socket");
+            return -1;
+        } else if (k == 0) break;
+        buffer = buffer + k;
+        nLeft = nLeft - k;
+    }
+    return n - nLeft;
 }
 
 void closeClient(SOCKET clientSocket) {
     shutdown(clientSocket, 2);
     closesocket(clientSocket);
-                int deleteSock;
-                WaitForSingleObject(mainThreadMutex, INFINITE);
+    int deleteSock;
+    WaitForSingleObject(mainThreadMutex, INFINITE);
 
-                for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                    if (poolOfSockets[i].second == clientSocket) {
-                        deleteSock = i;
-                        break;
-                    }
-                }
-                poolOfSockets.erase(poolOfSockets.begin() + deleteSock);
-                ReleaseMutex(mainThreadMutex);
+    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
+        if (poolOfSockets[i].second == clientSocket) {
+            deleteSock = i;
+            break;
+        }
+    }
+    poolOfSockets.erase(poolOfSockets.begin() + deleteSock);
+    ReleaseMutex(mainThreadMutex);
 }
 
 void registerClient(SOCKET clientSocket, int readed, char recvbuf[], int recvbuflen) {
@@ -352,216 +352,234 @@ void getTest (SOCKET clientSocket, char recvbuf []) {
 
 unsigned int __stdcall workingFlow(void* pArguments) {
 
-        SOCKET clientSocket = *(SOCKET*) pArguments;
+    SOCKET clientSocket = *(SOCKET*) pArguments;
 
-        int readed;
-        do {
-            char recvbuf[DEFAULT_BUFLEN];
-            int recvbuflen = DEFAULT_BUFLEN;
+    int readed;
+    do {
+        char recvbuf[DEFAULT_BUFLEN];
+        int recvbuflen = DEFAULT_BUFLEN;
 
-            readed = readn(clientSocket, recvbuf, recvbuflen);
-            if (readed == -1 || readed == 0) {
-                shutdown(clientSocket, 2);
-                closesocket(clientSocket);
-                break;
-            }
-            printf("Bytes read: %d\n", readed);
-            printf("Received data: %s\n", recvbuf);
-            if (recvbuf == END_STRING) { //8) Обработка запроса на отключение клиента
-                closeClient(clientSocket);
-                break;
+        readed = readn(clientSocket, recvbuf, recvbuflen);
+        if (readed == -1 || readed == 0) {
+            shutdown(clientSocket, 2);
+            closesocket(clientSocket);
+            break;
+        }
+        printf("Bytes read: %d\n", readed);
+        printf("Received data: %s\n", recvbuf);
+        if (recvbuf == END_STRING) { //8) Обработка запроса на отключение клиента
+            closeClient(clientSocket);
+            break;
+        } else {
+            if (std::string(recvbuf) == REGISTER_STRING) { //4) Регистрация клиента
+                registerClient(clientSocket, readed, recvbuf, recvbuflen);
             } else {
-                if (std::string(recvbuf) == REGISTER_STRING) { //4) Регистрация клиента
-                    registerClient(clientSocket, readed, recvbuf, recvbuflen);
+                if (recvbuf == SHOW_TESTS_STRING) { //4) Выдача клиенту списка тестов
+                    showListOfTests (clientSocket);
                 } else {
-                    if (recvbuf == SHOW_TESTS_STRING) { //4) Выдача клиенту списка тестов
-                        showListOfTests (clientSocket);
-                    } else {
-                        if (recvbuf == GET_TEST_RESULT) { //4) Выдача клиенту результата его последнего теста
-                            getResult (clientSocket);
-                        } else { //5) Получение от клиента номера теста
-                            getTest (clientSocket, recvbuf);
-                        }
+                    if (recvbuf == GET_TEST_RESULT) { //4) Выдача клиенту результата его последнего теста
+                        getResult (clientSocket);
+                    } else { //5) Получение от клиента номера теста
+                        getTest (clientSocket, recvbuf);
                     }
                 }
             }
-        } while (readed > 0);
-        _endthreadex( 0 );
-        return 0;
+        }
+    } while (readed > 0);
+    _endthreadex( 0 );
+    return 0;
 
 }
 
 unsigned int __stdcall acceptThreadFunction(void* pArguments) { //Поток для принятия клиентов
-        SOCKET listenSocket = *(SOCKET*) pArguments;
-        HANDLE myThreadHandlers[255];
-        unsigned threadId;
-        int connectionsCounter = 0;
-        while(true){
-            int clientSocket = accept(listenSocket, NULL, NULL); //2) Обработка запросов на подключение по этому порту от клиентов
-            if (clientSocket == INVALID_SOCKET) {
-                 printf("accept failed with error: %d\n", WSAGetLastError());
-                 closesocket(listenSocket);
-                 break;
-            }
-            WaitForSingleObject(mainThreadMutex, INFINITE);
-            poolOfSockets.push_back(std::make_pair(connectionsCounter, clientSocket));
-            myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &workingFlow, (void*) &clientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
-            printf("new client connected with id: %d\n", connectionsCounter);
-            connectionsCounter ++;
-            ReleaseMutex(mainThreadMutex);
+    SOCKET listenSocket = *(SOCKET*) pArguments;
+    HANDLE myThreadHandlers[255];
+    unsigned threadId;
+    int connectionsCounter = 0;
+    while(true){
+        int clientSocket = accept(listenSocket, NULL, NULL); //2) Обработка запросов на подключение по этому порту от клиентов
+        if (clientSocket == INVALID_SOCKET) {
+            printf("accept failed with error: %d\n", WSAGetLastError());
+            closesocket(listenSocket);
+            break;
         }
-        printf(CLOSING_CONNECT);
-        for (int i = 0; i < poolOfSockets.size(); i ++) {
-            shutdown(poolOfSockets[i].second, 2);
-            closesocket(poolOfSockets[i].second);
-        }
-        poolOfSockets.clear();
-        WaitForMultipleObjects(connectionsCounter, myThreadHandlers, true, INFINITE);
-        for (int i = 0; i < connectionsCounter; i++) {
-            CloseHandle(myThreadHandlers[i]);
-        }
-        _endthreadex( 0 );
-        return 0;
+        WaitForSingleObject(mainThreadMutex, INFINITE);
+        poolOfSockets.push_back(std::make_pair(connectionsCounter, clientSocket));
+        myThreadHandlers[connectionsCounter] = ((HANDLE)_beginthreadex(NULL, 0, &workingFlow, (void*) &clientSocket, 0, &threadId)); // 3) Поддержка одновременной работы нескольких клиентов через механизм нитей
+        printf("new client connected with id: %d\n", connectionsCounter);
+        connectionsCounter ++;
+        ReleaseMutex(mainThreadMutex);
+    }
+    printf(CLOSING_CONNECT);
+    for (int i = 0; i < poolOfSockets.size(); i ++) {
+        shutdown(poolOfSockets[i].second, 2);
+        closesocket(poolOfSockets[i].second);
+    }
+    poolOfSockets.clear();
+    WaitForMultipleObjects(connectionsCounter, myThreadHandlers, true, INFINITE);
+    for (int i = 0; i < connectionsCounter; i++) {
+        CloseHandle(myThreadHandlers[i]);
+    }
+    _endthreadex( 0 );
+    return 0;
 
 }
+
+
+void closeServer(SOCKET listenSocket, HANDLE acceptThreadHandler) {
+    printf(CLOSING_SERVER);
+    closesocket(listenSocket);
+    WaitForSingleObject(acceptThreadHandler, INFINITE );
+    CloseHandle(acceptThreadHandler);
+}
+
+void closeClient(int num) {
+    printf(CLIENT_DISCONNECT);
+    std::string strNum;
+    std::getline(std::cin, strNum);
+    num = atoi(strNum.c_str());
+    WaitForSingleObject(mainThreadMutex, INFINITE);
+    int indexToDelete = -1;
+    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
+        if (poolOfSockets[i].first == num) {
+            indexToDelete = i;
+            break;
+        }
+    }
+    if (indexToDelete != -1) {
+        shutdown(poolOfSockets[indexToDelete].second, 2);
+        closesocket(poolOfSockets[indexToDelete].second);
+        poolOfSockets.erase(poolOfSockets.begin() + indexToDelete);
+    }
+    ReleaseMutex(mainThreadMutex);
+}
+
+void sendMsgToClient(int num) {
+    printf(CLIENT_SEND_MESSAGE);
+    std::string numStr;
+    std::getline(std::cin, numStr);
+    num = atoi(numStr.c_str());
+    printf(YOUR_MESSAGE);
+    std::string sendString;
+    std::getline(std::cin, sendString);
+    WaitForSingleObject(mainThreadMutex, INFINITE);
+    SOCKET sendSock = -1;
+    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
+        if(poolOfSockets[i].first == num) {
+            sendSock = poolOfSockets[i].second;
+        }
+    }
+
+    int iSendResult ;
+    iSendResult = sendn(sendSock, (char*) sendString.c_str(), sendString.length());
+    if (iSendResult == SOCKET_ERROR) {
+        printf("send failed with error: %d\n", WSAGetLastError());
+        printf(DELETE_SOCKET);
+        shutdown(sendSock, 2);
+        closesocket(sendSock);
+    }
+    ReleaseMutex(mainThreadMutex);
+}
+
+void showClients() {
+    printf(AVAILABLE_CLIENTS);
+    WaitForSingleObject(mainThreadMutex, INFINITE);
+    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
+        printf("%d, ", poolOfSockets[i].first);
+    }
+    printf("\n");
+    ReleaseMutex(mainThreadMutex);
+}
+
 int main(void)
 {
-        WSADATA wsaData;
-        int iResult;
+    WSADATA wsaData;
+    int iResult;
 
-        SOCKET listenSocket = INVALID_SOCKET;
-        HANDLE acceptThreadHandler;
+    SOCKET listenSocket = INVALID_SOCKET;
+    HANDLE acceptThreadHandler;
 
-        struct addrinfo *result = NULL;
-        struct addrinfo hints;
+    struct addrinfo *result = NULL;
+    struct addrinfo hints;
 
-        unsigned acceptThreadId;
+    unsigned acceptThreadId;
 
-        ZeroMemory(&hints, sizeof(hints));
-        hints.ai_family = AF_INET;
-        hints.ai_socktype = SOCK_STREAM;
-        hints.ai_protocol = IPPROTO_TCP;
-        hints.ai_flags = AI_PASSIVE;
+    ZeroMemory(&hints, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
 
-        iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
-        if (iResult != 0) {
-            printf("WSAStartup failed with error: %d\n", iResult);
-            return 1;
-        }
+    iResult = WSAStartup(MAKEWORD(2,2), &wsaData);
+    if (iResult != 0) {
+        printf("WSAStartup failed with error: %d\n", iResult);
+        return 1;
+    }
 
-        iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
-        if ( iResult != 0 ) {
-            printf("getaddrinfo failed with error: %d\n", iResult);
-            WSACleanup();
-            return 1;
-        }
+    iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
+    if ( iResult != 0 ) {
+        printf("getaddrinfo failed with error: %d\n", iResult);
+        WSACleanup();
+        return 1;
+    }
 
-        listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol); //1) Прослушивание определенного порта
-        if (listenSocket == INVALID_SOCKET) {
-                printf("socket failed with error: %d\n", WSAGetLastError());
-                freeaddrinfo(result);
-                WSACleanup();
-                return 1;
-        }
+    listenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol); //1) Прослушивание определенного порта
+    if (listenSocket == INVALID_SOCKET) {
+        printf("socket failed with error: %d\n", WSAGetLastError());
+        freeaddrinfo(result);
+        WSACleanup();
+        return 1;
+    }
 
-        int yes=1;
+    int yes=1;
 
-        if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char*) &yes, sizeof(yes)) == -1) {
-            perror("setsockopt");
-            exit(1);
-        }
+    if (setsockopt(listenSocket, SOL_SOCKET, SO_REUSEADDR, (char*) &yes, sizeof(yes)) == -1) {
+        perror("setsockopt");
+        exit(1);
+    }
 
-        iResult = bind( listenSocket, result->ai_addr, (int)result->ai_addrlen);
-        if (iResult == SOCKET_ERROR) {
-            printf("bind failed with error: %d\n", WSAGetLastError());
-            freeaddrinfo(result);
-            WSACleanup();
-            closesocket(listenSocket);
-            return 1;
-        }
-        iResult = listen(listenSocket, SOMAXCONN);
-        if (iResult == SOCKET_ERROR) {
-            printf("listen failed with error: %d\n", WSAGetLastError());
-            WSACleanup();
-            closesocket(listenSocket);
-            return 1;
-        }
+    iResult = bind( listenSocket, result->ai_addr, (int)result->ai_addrlen);
+    if (iResult == SOCKET_ERROR) {
+        printf("bind failed with error: %d\n", WSAGetLastError());
+        freeaddrinfo(result);
+        WSACleanup();
+        closesocket(listenSocket);
+        return 1;
+    }
+    iResult = listen(listenSocket, SOMAXCONN);
+    if (iResult == SOCKET_ERROR) {
+        printf("listen failed with error: %d\n", WSAGetLastError());
+        WSACleanup();
+        closesocket(listenSocket);
+        return 1;
+    }
 
-        acceptThreadHandler = (HANDLE)_beginthreadex(NULL, 0, &acceptThreadFunction, (void*) &listenSocket, 0, &acceptThreadId);
+    acceptThreadHandler = (HANDLE)_beginthreadex(NULL, 0, &acceptThreadFunction, (void*) &listenSocket, 0, &acceptThreadId);
 
-        mainThreadMutex = CreateMutex( NULL, FALSE, NULL);
+    mainThreadMutex = CreateMutex( NULL, FALSE, NULL);
 
-        while (true) {
-            std::string str;
-            int num = -1;
-            printf(CHOOSE_OPERATION);
-            std::getline(std::cin, str);
-            if (str == END_STRING) {
-                printf(CLOSING_SERVER);
-                closesocket(listenSocket);
-                WaitForSingleObject(acceptThreadHandler, INFINITE );
-                CloseHandle(acceptThreadHandler);
-                break;
+    while (true) {
+        std::string str;
+        int num = -1;
+        printf(CHOOSE_OPERATION);
+        std::getline(std::cin, str);
+        if (str == END_STRING) {
+            closeServer(listenSocket, acceptThreadHandler);
+            break;
+        } else {
+            if (str == CLOSE_CLIENT_STRING) {//9) Принудительное отключение клиента
+                closeClient(num);
             } else {
-                if (str == CLOSE_CLIENT_STRING) {//9) Принудительное отключение клиента
-                    printf(CLIENT_DISCONNECT);
-                    std::string strNum;
-                    std::getline(std::cin, strNum);
-                    num = atoi(strNum.c_str());
-                    WaitForSingleObject(mainThreadMutex, INFINITE);
-                    int indexToDelete = -1;
-                    for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                        if (poolOfSockets[i].first == num) {
-                            indexToDelete = i;
-                            break;
-                        }
-                    }
-                    if (indexToDelete != -1) {
-                        shutdown(poolOfSockets[indexToDelete].second, 2);
-                        closesocket(poolOfSockets[indexToDelete].second);
-                        poolOfSockets.erase(poolOfSockets.begin() + indexToDelete);
-                    }
-                    ReleaseMutex(mainThreadMutex);
+                if (str == SEND_TO_CLIENT_STRING) {
+                    sendMsgToClient(num);
                 } else {
-                    if (str == SEND_TO_CLIENT_STRING) {
-                        printf(CLIENT_SEND_MESSAGE);
-                        std::string numStr;
-                        std::getline(std::cin, numStr);
-                        num = atoi(numStr.c_str());
-                        printf(YOUR_MESSAGE);
-                        std::string sendString;
-                        std::getline(std::cin, sendString);
-                        WaitForSingleObject(mainThreadMutex, INFINITE);
-                        SOCKET sendSock;
-                        for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                            if(poolOfSockets[i].first == num) {
-                                sendSock = poolOfSockets[i].second;
-                            }
-                        }
-
-                        int iSendResult ;
-                        iSendResult = sendn(sendSock, (char*) sendString.c_str(), sendString.length());
-                        if (iSendResult == SOCKET_ERROR) {
-                            printf("send failed with error: %d\n", WSAGetLastError());
-                            printf(DELETE_SOCKET);
-                            shutdown(sendSock, 2);
-                            closesocket(sendSock);
-                        }
-                        ReleaseMutex(mainThreadMutex);
-                    } else {
-                        if (str == SHOW_CLIENTS_STRING) {
-                            printf(AVAILABLE_CLIENTS);
-                            WaitForSingleObject(mainThreadMutex, INFINITE);
-                            for(unsigned int i = 0; i < poolOfSockets.size(); i++) {
-                                printf("%d, ", poolOfSockets[i].first);
-                            }
-                            printf("\n");
-                            ReleaseMutex(mainThreadMutex);
-                        }
+                    if (str == SHOW_CLIENTS_STRING) {
+                        showClients();
                     }
                 }
             }
         }
-        WSACleanup();
-        return 0;
+    }
+    WSACleanup();
+    return 0;
 }
