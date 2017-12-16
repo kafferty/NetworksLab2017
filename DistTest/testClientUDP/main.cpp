@@ -130,7 +130,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    iResult = getaddrinfo("127.0.0.1", "27021", &hints, &result);
+    iResult = getaddrinfo(argv[1], argv[2], &hints, &result);
     if ( iResult != 0 ) {
         printf("getaddrinfo failed with error: %d\n", iResult);
         WSACleanup();
