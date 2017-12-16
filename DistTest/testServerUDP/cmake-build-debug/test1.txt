@@ -1,0 +1,19 @@
+QUESTION:
+1) 2 - 1 = ?
+ANSWERS:
+1) 1
+2) 2
+3) 3
+QUESTION:
+2) 2 + 1 = ?
+ANSWERS:
+1) 1
+2) 2
+3) 3
+QUESTION:
+2) 4 + 1 = ?
+ANSWERS:
+1) 5
+2) 8
+3) 9
+END:

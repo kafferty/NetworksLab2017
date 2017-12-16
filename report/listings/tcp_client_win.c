@@ -24,7 +24,6 @@ int main(int argc, char *argv[]) {
 
     portno = (uint16_t) atoi(argv[2]);
 
-    /* Create a socket point */
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
 
     if (sockfd < 0) {
@@ -49,7 +48,6 @@ int main(int argc, char *argv[]) {
     bzero(buffer, 256);
     fgets(buffer, 255, stdin);
 
-    /* Send message to the server */
     n = sendto(sockfd, &buffer[0], 256, 0, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
 
     if (n < 0) {
@@ -57,7 +55,6 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    /* Now read server response */
     bzero(buffer, 256);
 
     struct sockaddr_in serv_two;
