@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <strings.h>
 
-#define DEFAULT_BUFLEN 512
+#define DEFAULT_BUFLEN 20
 #define DEFAULT_PORT "27021"
 #define VALIDCOMMANDS1 "Valid commands (Enter the command, not number):\n1) show\n2) getTest <number of test>\n"
 #define VALIDCOMMANDS2 "3) getResult \n result of the last test\n4) register\n <press Enter> ---> <login> <password>\n5) end\n"

@@ -15,7 +15,7 @@
 #include <unordered_map>
 
 
-#define DEFAULT_BUFLEN 512
+#define DEFAULT_BUFLEN 20
 #define DEFAULT_PORT "27021"
 
 #define REGISTRATION_FILE "registered.txt"

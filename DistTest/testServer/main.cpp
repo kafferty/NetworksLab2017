@@ -14,7 +14,7 @@
 #include <algorithm>
 #pragma comment (lib, "Ws2_32.lib")
 
-#define DEFAULT_BUFLEN 512
+#define DEFAULT_BUFLEN 20
 #define DEFAULT_PORT "27021"
 
 #define REGISTRATION_FILE "registered.txt"
